@@ -2,7 +2,7 @@
 
 use std::{fmt::Debug, path::PathBuf};
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use getset::{CopyGetters, Getters};
 use log::LevelFilter;
 
@@ -10,12 +10,25 @@ use log::LevelFilter;
 #[derive(Parser, CopyGetters, Getters, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
 pub struct CommandLineArguments {
-    /// The paths to the input files.
-    #[arg(short = 'i', required = true)]
-    #[getset(get = "pub")]
-    input_files: Vec<PathBuf>,
     /// The logging level. Extensive logging might slow down software execution [possible values: TRACE, DEBUG, INFO, WARN, ERROR]
     #[arg(short, long, default_value_t = LevelFilter::Warn)]
     #[getset(get_copy = "pub")]
     log_level: LevelFilter,
+    #[command(subcommand)]
+    command: Command,
+}
+
+#[derive(Subcommand, Debug, Clone)]
+pub enum Command {
+    /// Compiles a project.
+    Compile,
+    /// Decompiles an es file.
+    Decompile {
+        /// The paths to the input file.
+        #[arg(short = 'i', required = true)]
+        input_file: PathBuf,
+        /// The path to the project root directory.
+        #[arg(short = 'o')]
+        output_path: Option<PathBuf>,
+    },
 }
