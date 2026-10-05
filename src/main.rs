@@ -1,8 +1,6 @@
 use clap::Parser;
 
-use crate::{
-    arguments::CommandLineArguments, error::ApplicationError, esparser::parse_es
-};
+use crate::{arguments::CommandLineArguments, error::ApplicationError};
 
 /// Runs the application.
 fn main() -> Result<(), ApplicationError> {
@@ -62,10 +60,10 @@ fn main_internal(
 
     let command_line_arguments = cl_args_result?;
     log::debug!("Running with arguments: {:?}", command_line_arguments);
-    
-    for input_path in command_line_arguments.input_files() {
-        parse_es(input_path)?;
-    }
+
+    command_line_arguments.command().execute().map_err(|err| {
+        err.chain(format!("Failed to execute command {:?}", command_line_arguments.command()))
+    })?;
 
     log::info!("Finished successfully.");
     Ok(())
@@ -73,4 +71,6 @@ fn main_internal(
 
 mod arguments;
 mod error;
+mod esdata;
 mod esparser;
+mod utils;

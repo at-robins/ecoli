@@ -6,6 +6,8 @@ use clap::{Parser, Subcommand};
 use getset::{CopyGetters, Getters};
 use log::LevelFilter;
 
+use crate::{error::ApplicationError, esparser::parse_es};
+
 /// Es Compiler Light.
 #[derive(Parser, CopyGetters, Getters, Debug, Clone)]
 #[command(author, version, about, long_about = None)]
@@ -15,6 +17,7 @@ pub struct CommandLineArguments {
     #[getset(get_copy = "pub")]
     log_level: LevelFilter,
     #[command(subcommand)]
+    #[getset(get = "pub")]
     command: Command,
 }
 
@@ -31,4 +34,13 @@ pub enum Command {
         #[arg(short = 'o')]
         output_path: Option<PathBuf>,
     },
+}
+
+impl Command {
+    pub fn execute(&self) -> Result<(), ApplicationError> {
+        match self {
+            Command::Compile => todo!(),
+            Command::Decompile { input_file, output_path } => parse_es(input_file),
+        }
+    }
 }
