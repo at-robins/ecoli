@@ -4,7 +4,7 @@ use std::{fs::File, io::BufReader, path::Path};
 
 use log::info;
 
-use crate::{error::ApplicationError, esdata::EsHeader};
+use crate::{error::ApplicationError, esdata::sf01header::Sf01Header};
 
 pub enum EsParser {
     SF01Parser,
@@ -24,7 +24,7 @@ pub fn parse_sf01<T: AsRef<Path>>(path: T) -> Result<(), ApplicationError> {
         ApplicationError::from(err)
             .chain(format!("The input file \"{}\" could not be opened.", path.as_ref().display()))
     })?);
-    let header = EsHeader::read(&mut file)?;
+    let header = Sf01Header::read(&mut file)?;
     info!("{:?}", header);
     Ok(())
 }
