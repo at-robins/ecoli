@@ -4,6 +4,7 @@ use std::io::Read;
 
 use crate::{
     error::{ApplicationError, ApplicationErrorType},
+    esdata::EsEntityIO,
     utils::{is_bit_set_u32, set_bit_u32},
 };
 
@@ -20,14 +21,14 @@ pub struct Sf01Header {
     version_control_2: u16,
 }
 
-impl Sf01Header {
-    pub fn read<T: Read>(reader: &mut T) -> Result<Self, ApplicationError> {
+impl EsEntityIO for Sf01Header {
+    fn read<T: Read>(reader: &mut T) -> Result<Self, ApplicationError> {
         let mut buffer_32: [u8; 4] = [0; 4];
         let mut buffer_16: [u8; 2] = [0; 2];
 
-        reader.read_exact(&mut buffer_32).map_err(|err| {
-            ApplicationError::from(err).chain("Failed to read SF01 header ID.")
-        })?;
+        reader
+            .read_exact(&mut buffer_32)
+            .map_err(|err| ApplicationError::from(err).chain("Failed to read SF01 header ID."))?;
         if buffer_32 != SF01_HEADER_ID {
             return Err(ApplicationError::new(
                 ApplicationErrorType::InputDataError,
@@ -76,6 +77,18 @@ impl Sf01Header {
             form_version,
             version_control_2,
         })
+    }
+
+    fn serialise(&self) -> Vec<u8> {
+        let mut serialised_record = Vec::with_capacity(24);
+        serialised_record.extend_from_slice(&SF01_HEADER_ID);
+        serialised_record.extend(self.size.to_le_bytes());
+        serialised_record.extend(self.flags.flags.to_le_bytes());
+        serialised_record.extend(self.form_id.to_le_bytes());
+        serialised_record.extend(self.version_control_1.to_le_bytes());
+        serialised_record.extend(self.form_version.to_le_bytes());
+        serialised_record.extend(self.version_control_2.to_le_bytes());
+        serialised_record
     }
 }
 
@@ -165,5 +178,24 @@ impl Sf01HeaderFlags {
 impl From<u32> for Sf01HeaderFlags {
     fn from(flags: u32) -> Self {
         Sf01HeaderFlags { flags }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sf01_headers_read_serialise() {
+        let test_data: Vec<u8> = vec![
+            0x54, 0x45, 0x53, 0x34, 0xa5, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46, 0x02, 0x00, 0x00,
+        ];
+        assert_eq!(
+            test_data,
+            Sf01Header::read(&mut (test_data.as_slice()))
+                .unwrap()
+                .serialise()
+        );
     }
 }

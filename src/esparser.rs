@@ -4,7 +4,7 @@ use std::{fs::File, io::BufReader, path::Path};
 
 use log::info;
 
-use crate::{error::ApplicationError, esdata::sf01header::Sf01Header};
+use crate::{error::ApplicationError, esdata::{EsEntityIO, sf01header::Sf01Header}};
 
 pub enum EsParser {
     SF01Parser,
