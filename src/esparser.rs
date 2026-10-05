@@ -1,14 +1,30 @@
 //! This module parses es data.
 
-use std::{fs::File, path::Path};
+use std::{fs::File, io::BufReader, path::Path};
 
-use crate::error::ApplicationError;
+use log::info;
 
-pub fn parse_es<T: AsRef<Path>>(path: T) -> Result<(), ApplicationError> {
-    log::info!("Parsing {}.", path.as_ref().display());
-    let file = File::open(&path).map_err(|err| {
+use crate::{error::ApplicationError, esdata::EsHeader};
+
+pub enum EsParser {
+    SF01Parser,
+}
+
+impl EsParser {
+    pub fn parse_es<T: AsRef<Path>>(&self, path: T) -> Result<(), ApplicationError> {
+        match self {
+            EsParser::SF01Parser => parse_sf01(path),
+        }
+    }
+}
+
+pub fn parse_sf01<T: AsRef<Path>>(path: T) -> Result<(), ApplicationError> {
+    log::info!("Parsing {} with sf01 flavour.", path.as_ref().display());
+    let mut file = BufReader::new(File::open(&path).map_err(|err| {
         ApplicationError::from(err)
             .chain(format!("The input file \"{}\" could not be opened.", path.as_ref().display()))
-    })?;
+    })?);
+    let header = EsHeader::read(&mut file)?;
+    info!("{:?}", header);
     Ok(())
 }

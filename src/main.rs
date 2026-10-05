@@ -72,5 +72,6 @@ fn main_internal(
 mod arguments;
 mod error;
 mod esdata;
+mod esflavour;
 mod esparser;
 mod utils;

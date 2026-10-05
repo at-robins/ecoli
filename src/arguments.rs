@@ -6,7 +6,7 @@ use clap::{Parser, Subcommand};
 use getset::{CopyGetters, Getters};
 use log::LevelFilter;
 
-use crate::{error::ApplicationError, esparser::parse_es};
+use crate::{error::ApplicationError, esflavour::EsFlavour};
 
 /// Es Compiler Light.
 #[derive(Parser, CopyGetters, Getters, Debug, Clone)]
@@ -28,11 +28,14 @@ pub enum Command {
     /// Decompiles an es file.
     Decompile {
         /// The paths to the input file.
-        #[arg(short = 'i', required = true)]
+        #[arg(short = 'i', long, required = true)]
         input_file: PathBuf,
         /// The path to the project root directory.
-        #[arg(short = 'o')]
+        #[arg(short = 'o', long)]
         output_path: Option<PathBuf>,
+        /// The path to the project root directory.
+        #[arg(short = 'f', long, default_value_t=EsFlavour::SF01)]
+        flavour: EsFlavour,
     },
 }
 
@@ -40,7 +43,11 @@ impl Command {
     pub fn execute(&self) -> Result<(), ApplicationError> {
         match self {
             Command::Compile => todo!(),
-            Command::Decompile { input_file, output_path } => parse_es(input_file),
+            Command::Decompile {
+                input_file,
+                output_path,
+                flavour,
+            } => flavour.es_parser().parse_es(input_file),
         }
     }
 }
