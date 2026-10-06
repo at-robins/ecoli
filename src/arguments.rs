@@ -47,7 +47,10 @@ impl Command {
                 input_file,
                 output_path,
                 flavour,
-            } => flavour.es_parser().parse_es(input_file),
+            } => {
+                flavour.es_parser().parse_es(input_file)?;
+                Ok(())
+            },
         }
     }
 }
