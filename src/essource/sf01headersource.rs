@@ -15,6 +15,7 @@ pub struct Sf01HeaderSource {
     #[getset(get = "pub")]
     id: String,
     #[getset(get = "pub")]
+    #[serde(default)]
     flags: Sf01HeaderFlagsSource,
     #[getset(get_copy = "pub")]
     form_id: Option<u32>,
@@ -71,7 +72,7 @@ impl Sf01HeaderSource {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize)]
+#[derive(Debug, Deserialize, Serialize, Clone, Copy)]
 pub struct Sf01HeaderFlagsSource {
     base_flags: Option<u32>,
     full_master: Option<bool>,
@@ -116,6 +117,19 @@ impl From<Sf01HeaderFlags> for Sf01HeaderFlagsSource {
             small_master: Some(value.small_master()),
             localised: Some(value.localised()),
             blueprint: Some(value.blueprint()),
+        }
+    }
+}
+
+impl Default for Sf01HeaderFlagsSource {
+    fn default() -> Self {
+        Sf01HeaderFlagsSource {
+            base_flags: Some(0),
+            full_master: None,
+            medium_master: None,
+            small_master: None,
+            localised: None,
+            blueprint: None,
         }
     }
 }
