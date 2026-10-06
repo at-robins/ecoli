@@ -2,6 +2,8 @@
 
 use std::io::Read;
 
+use getset::CopyGetters;
+
 use crate::{
     error::{ApplicationError, ApplicationErrorType},
     esdata::EsEntityIO,
@@ -11,13 +13,19 @@ use crate::{
 /// The sf01 header ID.
 const SF01_HEADER_ID: [u8; 4] = [84, 69, 83, 52];
 
-#[derive(Debug)]
+#[derive(Debug, CopyGetters)]
 pub struct Sf01Header {
+    #[getset(get_copy = "pub")]
     size: u32,
+    #[getset(get_copy = "pub")]
     flags: Sf01HeaderFlags,
+    #[getset(get_copy = "pub")]
     form_id: u32,
+    #[getset(get_copy = "pub")]
     version_control_1: u32,
+    #[getset(get_copy = "pub")]
     form_version: u16,
+    #[getset(get_copy = "pub")]
     version_control_2: u16,
 }
 
@@ -92,8 +100,9 @@ impl EsEntityIO for Sf01Header {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, CopyGetters, Clone, Copy)]
 pub struct Sf01HeaderFlags {
+    #[getset(get_copy = "pub")]
     flags: u32,
 }
 

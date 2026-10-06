@@ -1,3 +1,5 @@
+//! This module provides different execution strategies.
+
 use crate::esparser::EsParser;
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
@@ -6,6 +8,7 @@ pub enum EsFlavour {
 }
 
 impl EsFlavour {
+    /// Returns the respective parser.
     pub fn es_parser(&self) -> EsParser {
         match self {
             EsFlavour::SF01 => EsParser::SF01Parser,
