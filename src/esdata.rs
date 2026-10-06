@@ -1,6 +1,7 @@
 //! This module models es data.
 
 use std::{
+    borrow::Borrow,
     fs::File,
     io::{BufWriter, Read, Write},
     path::Path,
@@ -31,9 +32,11 @@ pub enum EsContainer {
 }
 
 impl EsContainer {
-    pub fn compile(&self) {
+    pub fn compile<P: AsRef<Path>>(&self, artifact_directory: P) -> Result<(), ApplicationError> {
         match self {
-            EsContainer::Sf01Container { id, header } => todo!(),
+            EsContainer::Sf01Container { id, header } => {
+                sf01_compile(artifact_directory, id, header)
+            },
         }
     }
 
@@ -44,10 +47,10 @@ impl EsContainer {
     }
 }
 
-pub fn sf01_compile<S: AsRef<str>, P: AsRef<Path>>(
+pub fn sf01_compile<S: AsRef<str>, P: AsRef<Path>, H: Borrow<Sf01Header>>(
     artifact_directory: P,
     id: S,
-    header: Sf01Header,
+    header: H,
 ) -> Result<(), ApplicationError> {
     std::fs::create_dir_all(&artifact_directory).map_err(|err| {
         ApplicationError::from(err).chain(format!(
@@ -56,15 +59,17 @@ pub fn sf01_compile<S: AsRef<str>, P: AsRef<Path>>(
         ))
     })?;
     let mut artifact_path = artifact_directory.as_ref().join(id.as_ref());
-    artifact_path.set_extension(header.get_file_extension());
+    artifact_path.set_extension(header.borrow().get_file_extension());
     let mut artifact = BufWriter::new(File::create(&artifact_path).map_err(|err| {
         ApplicationError::from(err)
             .chain(format!("Failed to create SF01 artifact at {}.", artifact_path.display()))
     })?);
-    artifact.write_all(&header.serialise()).map_err(|err| {
-        ApplicationError::from(err)
-            .chain(format!("Failed to write SF01 header to {}.", artifact_path.display()))
-    })?;
+    artifact
+        .write_all(&header.borrow().serialise())
+        .map_err(|err| {
+            ApplicationError::from(err)
+                .chain(format!("Failed to write SF01 header to {}.", artifact_path.display()))
+        })?;
     Ok(())
 }
 
