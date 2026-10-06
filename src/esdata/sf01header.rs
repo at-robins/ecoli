@@ -12,6 +12,10 @@ use crate::{
 
 /// The sf01 header ID.
 const SF01_HEADER_ID: [u8; 4] = [84, 69, 83, 52];
+/// The default file extension of a non-master file.
+const FILE_EXTENSION_NO_MASTER: &str = "esp";
+/// The default file extension of a master file.
+const FILE_EXTENSION_MASTER: &str = "esm";
 
 #[derive(Debug, CopyGetters)]
 pub struct Sf01Header {
@@ -97,6 +101,17 @@ impl EsEntityIO for Sf01Header {
         serialised_record.extend(self.form_version.to_le_bytes());
         serialised_record.extend(self.version_control_2.to_le_bytes());
         serialised_record
+    }
+}
+
+impl Sf01Header {
+    /// Returns the default file extension for compilation.
+    pub fn get_file_extension(&self) -> &str {
+        if self.flags().full_master() || self.flags().small_master() || self.flags().medium_master() {
+            FILE_EXTENSION_MASTER
+        } else {
+            FILE_EXTENSION_NO_MASTER
+        }
     }
 }
 
