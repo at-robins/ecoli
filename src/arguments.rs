@@ -48,7 +48,19 @@ impl Command {
                 output_path,
                 flavour,
             } => {
-                flavour.es_parser().parse_es(input_file)?;
+                let container = flavour.es_parser().parse_es(input_file).map_err(|err| {
+                    ApplicationError::from(err)
+                        .chain(format!("Failed to parse {}.", input_file.display()))
+                })?;
+                let default_path = PathBuf::from(".");
+                let target_path = output_path.as_ref().unwrap_or(&default_path);
+                container.decompile(&target_path).map_err(|err| {
+                    ApplicationError::from(err).chain(format!(
+                        "Failed to decompile {} to {}.",
+                        input_file.display(),
+                        target_path.display()
+                    ))
+                })?;
                 Ok(())
             },
         }

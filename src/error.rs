@@ -114,6 +114,12 @@ impl From<core::num::ParseIntError> for ApplicationError {
     }
 }
 
+impl From<yaml_serde::Error> for ApplicationError {
+    fn from(error: yaml_serde::Error) -> Self {
+        Self::new(ApplicationErrorType::IOError, error)
+    }
+}
+
 /// A logger for a specific [`SeqError`].
 pub struct ApplicationErrorLogger {
     message: String,
