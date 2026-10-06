@@ -20,7 +20,7 @@ impl EsParser {
 }
 
 pub fn parse_sf01<T: AsRef<Path>>(path: T) -> Result<EsContainer, ApplicationError> {
-    log::info!("Parsing {} with sf01 flavour.", path.as_ref().display());
+    log::info!("Parsing {} with SF01 flavour.", path.as_ref().display());
     if let Some(file_name) = path.as_ref().file_stem()
         && path.as_ref().is_file()
     {
@@ -33,7 +33,7 @@ pub fn parse_sf01<T: AsRef<Path>>(path: T) -> Result<EsContainer, ApplicationErr
     } else {
         return Err(ApplicationError::new(
             crate::error::ApplicationErrorType::InputDataError,
-            format!("Input path {} does not point to a file.", path.as_ref().display()),
+            format!("Input path \"{}\" does not point to a file.", path.as_ref().display()),
         ));
     }
 }

@@ -1,6 +1,6 @@
 //! This module provides different execution strategies.
 
-use crate::esparser::EsParser;
+use crate::{compiler::EsCompiler, esparser::EsParser};
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy)]
 pub enum EsFlavour {
@@ -12,6 +12,13 @@ impl EsFlavour {
     pub fn es_parser(&self) -> EsParser {
         match self {
             EsFlavour::SF01 => EsParser::SF01Parser,
+        }
+    }
+
+    /// Returns the respective compiler.
+    pub fn es_conpiler(&self) -> EsCompiler {
+        match self {
+            EsFlavour::SF01 => EsCompiler::SF01Compiler,
         }
     }
 }

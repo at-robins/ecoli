@@ -64,7 +64,7 @@ pub fn sf01_decompile<S: AsRef<str>, P: AsRef<Path>, H: Borrow<Sf01Header>>(
             source_directory.as_ref().display()
         ))
     })?;
-    Sf01HeaderSource::from(header.borrow())
+    Sf01HeaderSource::from_compiled(id.as_ref(), header.borrow())
         .serialise(&source_directory)
         .map_err(|err| {
             ApplicationError::from(err).chain(format!(

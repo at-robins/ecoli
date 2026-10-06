@@ -23,8 +23,6 @@ pub enum ApplicationErrorType {
     IOError,
     /// Input data error.
     InputDataError,
-    /// Input operation error.
-    OutputOperationError,
 }
 
 impl std::fmt::Display for ApplicationErrorType {
@@ -33,7 +31,6 @@ impl std::fmt::Display for ApplicationErrorType {
             ApplicationErrorType::InternalError => "Generic internal error",
             ApplicationErrorType::IOError => "IO error",
             ApplicationErrorType::InputDataError => "Invalid input data",
-            ApplicationErrorType::OutputOperationError => "Output operation error",
         };
         write!(f, "{}", name)
     }

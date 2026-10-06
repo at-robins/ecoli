@@ -1,12 +1,13 @@
 //! This module models sf01 header data.
 
-use std::io::Read;
+use std::{borrow::Borrow, io::Read};
 
 use getset::CopyGetters;
 
 use crate::{
     error::{ApplicationError, ApplicationErrorType},
     esdata::EsEntityIO,
+    essource::sf01headersource::{Sf01HeaderFlagsSource, Sf01HeaderSource},
     utils::{is_bit_set_u32, set_bit_u32},
 };
 
@@ -105,9 +106,22 @@ impl EsEntityIO for Sf01Header {
 }
 
 impl Sf01Header {
+    pub fn from_source<T: Borrow<Sf01HeaderSource>>(source: T) -> Self {
+        let source = source.borrow();
+        Self {
+            // TODO: set actual payload size!
+            size: todo!(),
+            flags: Sf01HeaderFlags::from_source(source.flags()),
+            form_id: source.form_id().unwrap_or(0),
+            version_control_1: source.version_control_1().unwrap_or(0),
+            form_version: source.form_version().unwrap_or(582),
+            version_control_2: source.version_control_2().unwrap_or(0),
+        }
+    }
     /// Returns the default file extension for compilation.
     pub fn get_file_extension(&self) -> &str {
-        if self.flags().full_master() || self.flags().small_master() || self.flags().medium_master() {
+        if self.flags().full_master() || self.flags().small_master() || self.flags().medium_master()
+        {
             FILE_EXTENSION_MASTER
         } else {
             FILE_EXTENSION_NO_MASTER
@@ -196,6 +210,16 @@ impl Sf01HeaderFlags {
     /// * `value` - the bit value to set
     pub fn set_blueprint(&self, value: bool) -> Self {
         set_bit_u32(self.flags, Self::INDEX_BLUEPRINT, value).into()
+    }
+
+    pub fn from_source<T: Borrow<Sf01HeaderFlagsSource>>(source: T) -> Self {
+        let source = source.borrow();
+        Self::from(source.base_flags())
+            .set_full_master(source.full_master())
+            .set_medium_master(source.medium_master())
+            .set_small_master(source.small_master())
+            .set_localised(source.localised())
+            .set_blueprint(source.blueprint())
     }
 }
 
