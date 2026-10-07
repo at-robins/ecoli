@@ -1,11 +1,17 @@
 //! This module models sf01 header data.
 
-use std::{borrow::Borrow, io::{Cursor, Read}};
+use std::{
+    borrow::Borrow,
+    io::{Cursor, Read},
+};
 
-use getset::CopyGetters;
+use getset::{CopyGetters, Getters};
 
 use crate::{
-    error::{ApplicationError, ApplicationErrorType}, esdata::{EsEntityIO, sf01record::Sf01GenericRecord}, essource::sf01headersource::{Sf01HeaderFlagsSource, Sf01HeaderSource}, utils::{is_bit_set_u32, set_bit_u32},
+    error::{ApplicationError, ApplicationErrorType},
+    esdata::{EsEntityIO, sf01record::Sf01GenericRecord},
+    essource::sf01headersource::{Sf01HeaderFlagsSource, Sf01HeaderSource},
+    utils::{is_bit_set_u32, set_bit_u32},
 };
 
 /// The sf01 header ID.
@@ -15,7 +21,7 @@ const FILE_EXTENSION_NO_MASTER: &str = "esp";
 /// The default file extension of a master file.
 const FILE_EXTENSION_MASTER: &str = "esm";
 
-#[derive(Debug, CopyGetters)]
+#[derive(Debug, CopyGetters, Getters)]
 pub struct Sf01Header {
     #[getset(get_copy = "pub")]
     size: u32,
@@ -29,6 +35,8 @@ pub struct Sf01Header {
     form_version: u16,
     #[getset(get_copy = "pub")]
     version_control_2: u16,
+    #[getset(get = "pub")]
+    records: Vec<Sf01GenericRecord>,
 }
 
 impl EsEntityIO for Sf01Header {
@@ -83,14 +91,12 @@ impl EsEntityIO for Sf01Header {
         if size > 0 {
             let mut payload_buffer: Vec<u8> = vec![0; size as usize];
             reader.read_exact(&mut payload_buffer)?;
-    
-            let mut payload_reader  = Cursor::new(payload_buffer);
-            
+
+            let mut payload_reader = Cursor::new(payload_buffer);
+
             while payload_reader.position() < size as u64 {
                 records.push(Sf01GenericRecord::read(&mut payload_reader)?);
-            }            
-            log::debug!("{:?}", records);
-
+            }
         }
 
         Ok(Self {
@@ -100,6 +106,7 @@ impl EsEntityIO for Sf01Header {
             version_control_1,
             form_version,
             version_control_2,
+            records,
         })
     }
 
@@ -112,23 +119,43 @@ impl EsEntityIO for Sf01Header {
         serialised_record.extend(self.version_control_1.to_le_bytes());
         serialised_record.extend(self.form_version.to_le_bytes());
         serialised_record.extend(self.version_control_2.to_le_bytes());
+        serialised_record.extend(Self::serialse_records(&self.records));
         serialised_record
     }
 }
 
 impl Sf01Header {
-    pub fn from_source<T: Borrow<Sf01HeaderSource>>(source: T) -> Self {
+    fn serialse_records(records: &Vec<Sf01GenericRecord>) -> Vec<u8> {
+        let mut serialised_record = Vec::new();
+        for record in records {
+            serialised_record.extend(record.serialise());
+        }
+        serialised_record
+    }
+
+    pub fn from_source<T: Borrow<Sf01HeaderSource>>(source: T) -> Result<Self, ApplicationError> {
         let source = source.borrow();
-        Self {
-            // TODO: set actual payload size!
-            size: todo!(),
+        let mut records = Vec::new();
+        for source_record in source.records() {
+            records.push(Sf01GenericRecord::from_source(source_record).map_err(|err| {
+                err.chain(format!(
+                    "Failed to create a record from source record: {:?}",
+                    source_record
+                ))
+            })?);
+        }
+        
+        Ok(Self {
+            size: Self::serialse_records(&records).len() as u32,
             flags: Sf01HeaderFlags::from_source(source.flags()),
             form_id: source.form_id().unwrap_or(0),
             version_control_1: source.version_control_1().unwrap_or(0),
             form_version: source.form_version().unwrap_or(582),
             version_control_2: source.version_control_2().unwrap_or(0),
-        }
+            records,
+        })
     }
+
     /// Returns the default file extension for compilation.
     pub fn get_file_extension(&self) -> &str {
         if self.flags().full_master() || self.flags().small_master() || self.flags().medium_master()

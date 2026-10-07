@@ -1,12 +1,13 @@
 //! This module models sf01 records data.
 
-use std::{io::Read};
+use std::{borrow::Borrow, io::Read};
 
 use getset::{CopyGetters, Getters};
 
 use crate::{
-    error::{ApplicationError},
+    error::{ApplicationError, ApplicationErrorType},
     esdata::EsEntityIO,
+    essource::sf01recordsource::Sf01GenericRecordSource,
 };
 
 /// The sf01 header ID.
@@ -19,7 +20,24 @@ pub struct Sf01GenericRecord {
     #[getset(get_copy = "pub")]
     size: u32,
     #[getset(get = "pub")]
-    payload: Vec<u8>
+    payload: Vec<u8>,
+}
+
+impl Sf01GenericRecord {
+    pub fn from_source<T: Borrow<Sf01GenericRecordSource>>(
+        source: T,
+    ) -> Result<Self, ApplicationError> {
+        let source = source.borrow();
+        let payload = base122_rs::decode(source.content()).map_err(|err| {
+            ApplicationError::new(ApplicationErrorType::IOError, err)
+                .chain(format!("Failed to decode binary source data: {:?}", source))
+        })?;
+        Ok(Self {
+            id: source.class(),
+            size: payload.len() as u32,
+            payload,
+        })
+    }
 }
 
 impl EsEntityIO for Sf01GenericRecord {
@@ -37,19 +55,19 @@ impl EsEntityIO for Sf01GenericRecord {
             // Use the extended record size parsing.
 
             // Parses extended size payload.
-            reader
-            .read_exact(&mut buffer_32)
-            .map_err(|err| ApplicationError::from(err).chain("Failed to read SF01 extended size record ID."))?;
+            reader.read_exact(&mut buffer_32).map_err(|err| {
+                ApplicationError::from(err).chain("Failed to read SF01 extended size record ID.")
+            })?;
             let extended_size = u32::from_le_bytes(buffer_32);
             // Parses actual record.
-            reader
-            .read_exact(&mut buffer_32)
-            .map_err(|err| ApplicationError::from(err).chain("Failed to read SF01 extended size record size."))?;
+            reader.read_exact(&mut buffer_32).map_err(|err| {
+                ApplicationError::from(err).chain("Failed to read SF01 extended size record size.")
+            })?;
             let extended_id = u32::from_le_bytes(buffer_32);
             // Ignores the 0 size value of the actual record.
-            reader
-            .read_exact(&mut buffer_16)
-            .map_err(|err| ApplicationError::from(err).chain("Failed to read SF01 record size."))?;
+            reader.read_exact(&mut buffer_16).map_err(|err| {
+                ApplicationError::from(err).chain("Failed to read SF01 record size.")
+            })?;
 
             (extended_id, extended_size)
         } else {
@@ -58,11 +76,7 @@ impl EsEntityIO for Sf01GenericRecord {
         let mut payload: Vec<u8> = vec![0; size as usize];
         reader.read_exact(&mut payload)?;
 
-        Ok(Self {
-            id,
-            size,
-            payload,
-        })
+        Ok(Self { id, size, payload })
     }
 
     fn serialise(&self) -> Vec<u8> {
@@ -78,6 +92,7 @@ impl EsEntityIO for Sf01GenericRecord {
             serialised_record.extend(self.id.to_le_bytes());
             serialised_record.extend((self.size as u16).to_le_bytes());
         }
+        serialised_record.extend(self.payload());
 
         serialised_record
     }
@@ -88,7 +103,5 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test() {
-        
-    }
+    fn test() {}
 }

@@ -36,7 +36,12 @@ pub fn compile_sf01<T: AsRef<Path>>(path: T) -> Result<EsContainer, ApplicationE
         ))
     })?;
 
-    let header_compiled: Sf01Header = Sf01Header::from_source(&header_source);
+    let header_compiled: Sf01Header = Sf01Header::from_source(&header_source).map_err(|err| {
+        ApplicationError::from(err).chain(format!(
+            "The SF01 header file \"{}\" could not be converted from source representation.",
+            path.as_ref().display()
+        ))
+    })?;
     Ok(EsContainer::Sf01Container {
         id: header_source.id().to_string(),
         header: header_compiled,
