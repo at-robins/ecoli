@@ -1,14 +1,11 @@
 //! This module models sf01 header data.
 
-use std::{borrow::Borrow, io::Read};
+use std::{borrow::Borrow, io::{Cursor, Read}};
 
 use getset::CopyGetters;
 
 use crate::{
-    error::{ApplicationError, ApplicationErrorType},
-    esdata::EsEntityIO,
-    essource::sf01headersource::{Sf01HeaderFlagsSource, Sf01HeaderSource},
-    utils::{is_bit_set_u32, set_bit_u32},
+    error::{ApplicationError, ApplicationErrorType}, esdata::{EsEntityIO, sf01record::Sf01GenericRecord}, essource::sf01headersource::{Sf01HeaderFlagsSource, Sf01HeaderSource}, utils::{is_bit_set_u32, set_bit_u32},
 };
 
 /// The sf01 header ID.
@@ -81,6 +78,20 @@ impl EsEntityIO for Sf01Header {
             ApplicationError::from(err).chain("Failed to read SF01 header version control 2.")
         })?;
         let version_control_2 = u16::from_le_bytes(buffer_16);
+
+        let mut records = Vec::new();
+        if size > 0 {
+            let mut payload_buffer: Vec<u8> = vec![0; size as usize];
+            reader.read_exact(&mut payload_buffer)?;
+    
+            let mut payload_reader  = Cursor::new(payload_buffer);
+            
+            while payload_reader.position() < size as u64 {
+                records.push(Sf01GenericRecord::read(&mut payload_reader)?);
+            }            
+            log::debug!("{:?}", records);
+
+        }
 
         Ok(Self {
             size,

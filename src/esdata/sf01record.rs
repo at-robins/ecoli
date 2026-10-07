@@ -2,7 +2,7 @@
 
 use std::{io::Read};
 
-use getset::CopyGetters;
+use getset::{CopyGetters, Getters};
 
 use crate::{
     error::{ApplicationError},
@@ -12,12 +12,14 @@ use crate::{
 /// The sf01 header ID.
 const SF01_RECORD_ID_EXTENDED_SIZE: [u8; 4] = [120, 120, 120, 120];
 
-#[derive(Debug, CopyGetters)]
+#[derive(Debug, CopyGetters, Getters)]
 pub struct Sf01GenericRecord {
     #[getset(get_copy = "pub")]
     id: u32,
     #[getset(get_copy = "pub")]
     size: u32,
+    #[getset(get = "pub")]
+    payload: Vec<u8>
 }
 
 impl EsEntityIO for Sf01GenericRecord {
@@ -53,11 +55,13 @@ impl EsEntityIO for Sf01GenericRecord {
         } else {
             (u32::from_le_bytes(buffer_32), u16::from_le_bytes(buffer_16) as u32)
         };
-
+        let mut payload: Vec<u8> = vec![0; size as usize];
+        reader.read_exact(&mut payload)?;
 
         Ok(Self {
             id,
             size,
+            payload,
         })
     }
 
@@ -78,21 +82,6 @@ impl EsEntityIO for Sf01GenericRecord {
         serialised_record
     }
 }
-
-// impl Sf01Header {
-//     pub fn from_source<T: Borrow<Sf01HeaderSource>>(source: T) -> Self {
-//         let source = source.borrow();
-//         Self {
-//             // TODO: set actual payload size!
-//             size: todo!(),
-//             flags: Sf01HeaderFlags::from_source(source.flags()),
-//             form_id: source.form_id().unwrap_or(0),
-//             version_control_1: source.version_control_1().unwrap_or(0),
-//             form_version: source.form_version().unwrap_or(582),
-//             version_control_2: source.version_control_2().unwrap_or(0),
-//         }
-//     }
-// }
 
 #[cfg(test)]
 mod tests {
