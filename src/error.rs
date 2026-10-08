@@ -1,5 +1,7 @@
 //! This module defines specific error types.
 
+use std::{string::FromUtf8Error};
+
 use getset::{CopyGetters, Getters};
 use log::error;
 
@@ -113,7 +115,13 @@ impl From<core::num::ParseIntError> for ApplicationError {
 
 impl From<yaml_serde::Error> for ApplicationError {
     fn from(error: yaml_serde::Error) -> Self {
-        Self::new(ApplicationErrorType::IOError, error)
+        Self::new(ApplicationErrorType::InputDataError, error)
+    }
+}
+
+impl From<FromUtf8Error> for ApplicationError {
+    fn from(error: FromUtf8Error) -> Self {
+        Self::new(ApplicationErrorType::InputDataError, error)
     }
 }
 

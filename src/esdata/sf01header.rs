@@ -51,7 +51,7 @@ impl EsEntityIO for Sf01Header {
             return Err(ApplicationError::new(
                 ApplicationErrorType::InputDataError,
                 format!(
-                    "Failed to parse input data as SF01 header record. ID sequence {:?} does not mathc {:?}.",
+                    "Failed to parse input data as SF01 header record. ID sequence {:?} does not match {:?}.",
                     buffer_32, SF01_HEADER_ID
                 ),
             ));

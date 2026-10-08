@@ -2,15 +2,15 @@
 
 use std::borrow::Borrow;
 
-use getset::{CopyGetters, Getters};
+use getset::Getters;
 use serde::{Deserialize, Serialize};
 
-use crate::esdata::sf01record::Sf01GenericRecord;
+use crate::{esdata::sf01record::Sf01GenericRecord};
 
-#[derive(Debug, CopyGetters, Getters, Serialize, Deserialize)]
+#[derive(Debug, Getters, Serialize, Deserialize)]
 pub struct Sf01GenericRecordSource {
-    #[getset(get_copy = "pub")]
-    class: u32,
+    #[getset(get = "pub")]
+    class: String,
     #[getset(get = "pub")]
     content: String,
 }
@@ -20,7 +20,13 @@ impl Sf01GenericRecordSource {
         let record = record.borrow();
 
         Self {
-            class: record.id(),
+            class: String::from_utf8(record.id().to_vec()).unwrap_or_else(|_| {
+                log::warn!(
+                    "Record ID {:?} is not a valid string, using integer representation instead.",
+                    record.id()
+                );
+                u32::from_le_bytes(record.id()).to_string()
+            }),
             content: base122_rs::encode(record.payload()),
         }
     }
