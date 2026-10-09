@@ -5,6 +5,7 @@ use std::io::{Cursor, Read};
 use crate::{
     error::{ApplicationError, ApplicationErrorType},
     esdata::sf01record::Sf01GenericRecord,
+    utils::NullTerminatedString,
 };
 
 pub enum Sf01HeaderRecord {
@@ -18,8 +19,8 @@ pub enum Sf01HeaderRecord {
     Offset(Sf01GenericRecord),
     /// Internal entity deletion record. Can be ignored for (de-)compilation.
     Deletion(Sf01GenericRecord),
-    Author,
-    Description,
+    Author(NullTerminatedString),
+    Description(NullTerminatedString),
     Master,
     Overrides,
     SCRN,
@@ -58,8 +59,8 @@ impl Sf01HeaderRecord {
             Sf01HeaderRecord::Header { .. } => Self::RECORD_ID_HEADER,
             Sf01HeaderRecord::Offset(_) => Self::RECORD_ID_OFFSET,
             Sf01HeaderRecord::Deletion(_) => Self::RECORD_ID_DELETION,
-            Sf01HeaderRecord::Author => Self::RECORD_ID_AUTHOR,
-            Sf01HeaderRecord::Description => Self::RECORD_ID_DESCRIPTION,
+            Sf01HeaderRecord::Author(_) => Self::RECORD_ID_AUTHOR,
+            Sf01HeaderRecord::Description(_) => Self::RECORD_ID_DESCRIPTION,
             Sf01HeaderRecord::Master => Self::RECORD_ID_MASTER,
             Sf01HeaderRecord::Overrides => Self::RECORD_ID_OVERRIDES,
             Sf01HeaderRecord::SCRN => Self::RECORD_ID_SCRN,
@@ -119,6 +120,12 @@ impl Sf01HeaderRecord {
         }
     }
 
+    fn string_from_generic(
+        record: Sf01GenericRecord,
+    ) -> Result<NullTerminatedString, ApplicationError> {
+        String::from_utf8(record.take_payload()).map_err(ApplicationError::from).and_then(NullTerminatedString::new)
+    }
+
     fn transient_ids_from_generic(record: Sf01GenericRecord) -> Result<Self, ApplicationError> {
         let mut buffer_32: [u8; 4] = [0; 4];
         let raw_payload = record.take_payload();
@@ -155,8 +162,8 @@ mod tests {
             },
             Sf01HeaderRecord::Offset(Sf01GenericRecord::default()),
             Sf01HeaderRecord::Deletion(Sf01GenericRecord::default()),
-            Sf01HeaderRecord::Author,
-            Sf01HeaderRecord::Description,
+            Sf01HeaderRecord::Author(NullTerminatedString::default()),
+            Sf01HeaderRecord::Description(NullTerminatedString::default()),
             Sf01HeaderRecord::Master,
             Sf01HeaderRecord::Overrides,
             Sf01HeaderRecord::SCRN,

@@ -95,6 +95,12 @@ impl NullTerminatedString {
     }
 }
 
+impl Default for NullTerminatedString {
+    fn default() -> Self {
+        Self { value: Default::default() }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
