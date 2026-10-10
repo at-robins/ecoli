@@ -1,5 +1,7 @@
 //! This module contains utility functions.
 
+use serde::{Deserialize, Serialize};
+
 use crate::error::{ApplicationError, ApplicationErrorType};
 
 /// Returns true if the bit at the specified index is set.
@@ -41,6 +43,8 @@ pub fn set_bit_u32(value: u32, bit_index: u32, bit: bool) -> u32 {
     }
 }
 
+#[derive(Debug, Clone, Deserialize, Serialize)]
+#[serde(transparent)]
 pub struct NullTerminatedString {
     value: String,
 }
@@ -81,6 +85,19 @@ impl NullTerminatedString {
         self.value.as_str()
     }
 
+    /// Creates a new NULL terminated string if the input binary data is a valid string and 
+    /// does not contain internal termination characters.
+    ///
+    /// # Paramerters
+    ///
+    /// * `binary_value` - the binary value to convert to a NULL terminated string (might already be a NULL terminated string)
+    pub fn from_binary(binary_value: Vec<u8>) -> Result<Self, ApplicationError> {
+        NullTerminatedString::new(String::from_utf8(binary_value).map_err(|err| {
+            ApplicationError::from(err)
+                .chain("Failed to parse null terminated string from binary data.")
+        })?)
+    }
+
     /// Returns the UTF8 encoded string as byte vector including the termination character.
     pub fn serialise(&self) -> Vec<u8> {
         let mut termination_character_buffer = [0; 1];
@@ -97,7 +114,9 @@ impl NullTerminatedString {
 
 impl Default for NullTerminatedString {
     fn default() -> Self {
-        Self { value: Default::default() }
+        Self {
+            value: Default::default(),
+        }
     }
 }
 

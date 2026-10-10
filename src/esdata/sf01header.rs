@@ -9,9 +9,12 @@ use getset::{CopyGetters, Getters};
 
 use crate::{
     error::{ApplicationError, ApplicationErrorType},
-    esdata::{EsEntityIO, sf01record::Sf01GenericRecord},
+    esdata::{
+        EsEntityIO,
+        sf01record::{Sf01GenericRecord, sf01headerrecords::Sf01HeaderRecord},
+    },
     essource::sf01headersource::{Sf01HeaderFlagsSource, Sf01HeaderSource},
-    utils::{is_bit_set_u32, set_bit_u32},
+    utils::{NullTerminatedString, is_bit_set_u32, set_bit_u32},
 };
 
 /// The sf01 header ID.
@@ -24,8 +27,6 @@ const FILE_EXTENSION_MASTER: &str = "esm";
 #[derive(Debug, CopyGetters, Getters)]
 pub struct Sf01Header {
     #[getset(get_copy = "pub")]
-    size: u32,
-    #[getset(get_copy = "pub")]
     flags: Sf01HeaderFlags,
     #[getset(get_copy = "pub")]
     form_id: u32,
@@ -36,7 +37,9 @@ pub struct Sf01Header {
     #[getset(get_copy = "pub")]
     version_control_2: u16,
     #[getset(get = "pub")]
-    records: Vec<Sf01GenericRecord>,
+    author: Option<NullTerminatedString>,
+    #[getset(get = "pub")]
+    description: Option<NullTerminatedString>,
 }
 
 impl EsEntityIO for Sf01Header {
@@ -87,7 +90,8 @@ impl EsEntityIO for Sf01Header {
         })?;
         let version_control_2 = u16::from_le_bytes(buffer_16);
 
-        let mut records = Vec::new();
+        let mut author = None;
+        let mut description = None;
         if size > 0 {
             let mut payload_buffer: Vec<u8> = vec![0; size as usize];
             reader.read_exact(&mut payload_buffer)?;
@@ -95,64 +99,91 @@ impl EsEntityIO for Sf01Header {
             let mut payload_reader = Cursor::new(payload_buffer);
 
             while payload_reader.position() < size as u64 {
-                records.push(Sf01GenericRecord::read(&mut payload_reader)?);
+                let record = Sf01GenericRecord::read(&mut payload_reader)
+                    .map_err(|err| err.chain("Failed to parse header record."))?;
+                if record.id() == Sf01HeaderRecord::Author.record_id_binary() {
+                    author = Some(NullTerminatedString::from_binary(record.take_payload())?)
+                } else if record.id() == Sf01HeaderRecord::Description.record_id_binary() {
+                    description = Some(NullTerminatedString::from_binary(record.take_payload())?)
+                }
             }
         }
 
         Ok(Self {
-            size,
             flags,
             form_id,
             version_control_1,
             form_version,
             version_control_2,
-            records,
+            author,
+            description,
         })
     }
 
     fn serialise(&self) -> Vec<u8> {
-        let mut serialised_record = Vec::with_capacity(24);
+        let records = self.serialse_records(todo!(), todo!());
+        let mut serialised_record = Vec::with_capacity(24 + records.len());
         serialised_record.extend_from_slice(&SF01_HEADER_ID);
-        serialised_record.extend(self.size.to_le_bytes());
+        serialised_record.extend((records.len() as u32).to_le_bytes());
         serialised_record.extend(self.flags.flags.to_le_bytes());
         serialised_record.extend(self.form_id.to_le_bytes());
         serialised_record.extend(self.version_control_1.to_le_bytes());
         serialised_record.extend(self.form_version.to_le_bytes());
         serialised_record.extend(self.version_control_2.to_le_bytes());
-        serialised_record.extend(Self::serialse_records(&self.records));
+        serialised_record.extend(records);
         serialised_record
     }
 }
 
 impl Sf01Header {
-    fn serialse_records(records: &Vec<Sf01GenericRecord>) -> Vec<u8> {
-        let mut serialised_record = Vec::new();
-        for record in records {
-            serialised_record.extend(record.serialise());
+    fn serialse_records(&self, record_count: u32, next_object_id: u32) -> Vec<u8> {
+        let mut records = Vec::new();
+
+        let mut header_payload = Sf01HeaderRecord::RECORD_FIELD_HEADER_VERSION.to_vec();
+        header_payload.extend(record_count.to_le_bytes());
+        header_payload.extend(next_object_id.to_le_bytes());
+
+        records.push(Sf01GenericRecord::new(
+            Sf01HeaderRecord::Header.record_id_binary(),
+            header_payload,
+        ));
+
+        if let Some(author) = self.author() {
+            records.push(Sf01GenericRecord::new(
+                Sf01HeaderRecord::Author.record_id_binary(),
+                author.serialise(),
+            ));
+        } else {
+            records.push(Sf01GenericRecord::new(
+                Sf01HeaderRecord::Author.record_id_binary(),
+                Sf01HeaderRecord::default_author().serialise(),
+            ));
         }
-        serialised_record
+        if let Some(description) = self.description() {
+            records.push(Sf01GenericRecord::new(
+                Sf01HeaderRecord::Description.record_id_binary(),
+                description.serialise(),
+            ));
+        }
+
+        let mut serialised_records = Vec::new();
+        for record in records {
+            serialised_records.extend(record.serialise());
+        }
+        serialised_records
     }
 
     pub fn from_source<T: Borrow<Sf01HeaderSource>>(source: T) -> Result<Self, ApplicationError> {
         let source = source.borrow();
-        let mut records = Vec::new();
-        for source_record in source.records() {
-            records.push(Sf01GenericRecord::from_source(source_record).map_err(|err| {
-                err.chain(format!(
-                    "Failed to create a record from source record: {:?}",
-                    source_record
-                ))
-            })?);
-        }
-        
+
         Ok(Self {
-            size: Self::serialse_records(&records).len() as u32,
             flags: Sf01HeaderFlags::from_source(source.flags()),
             form_id: source.form_id().unwrap_or(0),
             version_control_1: source.version_control_1().unwrap_or(0),
             form_version: source.form_version().unwrap_or(582),
             version_control_2: source.version_control_2().unwrap_or(0),
-            records,
+            author: source.author().clone(),
+            description: source.description().clone(),
         })
     }
 

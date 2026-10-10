@@ -17,13 +17,15 @@ const SF01_RECORD_ID_EXTENDED_SIZE: [u8; 4] = [120, 120, 120, 120];
 pub struct Sf01GenericRecord {
     #[getset(get_copy = "pub")]
     id: [u8; 4],
-    #[getset(get_copy = "pub")]
-    size: u32,
     #[getset(get = "pub")]
     payload: Vec<u8>,
 }
 
 impl Sf01GenericRecord {
+    pub fn new(id: [u8; 4], payload: Vec<u8>,) -> Self {
+        Sf01GenericRecord { id, payload }
+    }
+
     pub fn from_source<T: Borrow<Sf01GenericRecordSource>>(
         source: T,
     ) -> Result<Self, ApplicationError> {
@@ -45,7 +47,6 @@ impl Sf01GenericRecord {
         };
         Ok(Self {
             id,
-            size: payload.len() as u32,
             payload,
         })
     }
@@ -54,6 +55,11 @@ impl Sf01GenericRecord {
     pub fn take_payload(self) -> Vec<u8> {
         self.payload
     }
+
+    // Returns the payload size in bytes.
+    pub fn size(&self) -> u32 {
+        self.payload().len() as u32
+    } 
 }
 
 impl EsEntityIO for Sf01GenericRecord {
@@ -91,7 +97,7 @@ impl EsEntityIO for Sf01GenericRecord {
         let mut payload: Vec<u8> = vec![0; size as usize];
         reader.read_exact(&mut payload)?;
 
-        Ok(Self { id, size, payload })
+        Ok(Self { id, payload })
     }
 
     fn serialise(&self) -> Vec<u8> {
@@ -100,12 +106,12 @@ impl EsEntityIO for Sf01GenericRecord {
             // Use extended size format.
             serialised_record.extend_from_slice(&SF01_RECORD_ID_EXTENDED_SIZE);
             serialised_record.extend(4u16.to_le_bytes());
-            serialised_record.extend(self.size.to_le_bytes());
+            serialised_record.extend(self.size().to_le_bytes());
             serialised_record.extend(self.id());
             serialised_record.extend(0u16.to_le_bytes());
         } else {
             serialised_record.extend(self.id());
-            serialised_record.extend((self.size as u16).to_le_bytes());
+            serialised_record.extend((self.size() as u16).to_le_bytes());
         }
         serialised_record.extend(self.payload());
 
@@ -115,7 +121,7 @@ impl EsEntityIO for Sf01GenericRecord {
 
 impl Default for Sf01GenericRecord {
     fn default() -> Self {
-        Self { id: Default::default(), size: Default::default(), payload: Default::default() }
+        Self { id: Default::default(), payload: Default::default() }
     }
 }
 

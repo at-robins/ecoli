@@ -6,9 +6,7 @@ use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    error::ApplicationError,
-    esdata::sf01header::{Sf01Header, Sf01HeaderFlags},
-    essource::sf01recordsource::Sf01GenericRecordSource,
+    error::ApplicationError, esdata::sf01header::{Sf01Header, Sf01HeaderFlags}, utils::NullTerminatedString,
 };
 
 #[derive(Debug, Getters, CopyGetters, Deserialize, Serialize)]
@@ -27,8 +25,9 @@ pub struct Sf01HeaderSource {
     #[getset(get_copy = "pub")]
     version_control_2: Option<u16>,
     #[getset(get = "pub")]
-    #[serde(default)]
-    records: Vec<Sf01GenericRecordSource>,
+    author: Option<NullTerminatedString>,
+    #[getset(get = "pub")]
+    description: Option<NullTerminatedString>,
 }
 
 impl Sf01HeaderSource {
@@ -44,11 +43,8 @@ impl Sf01HeaderSource {
             version_control_1: Some(header.version_control_1()),
             form_version: Some(header.form_version()),
             version_control_2: Some(header.version_control_2()),
-            records: header
-                .records()
-                .into_iter()
-                .map(Sf01GenericRecordSource::from_compiled)
-                .collect(),
+            author: header.author().clone(),
+            description: header.description().clone(),
         }
     }
 
