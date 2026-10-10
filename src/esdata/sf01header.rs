@@ -42,6 +42,8 @@ pub struct Sf01Header {
     author: Option<NullTerminatedString>,
     #[getset(get = "pub")]
     description: Option<NullTerminatedString>,
+    #[getset(get = "pub")]
+    dependencies: Vec<NullTerminatedString>,
 }
 
 impl EsEntityIO for Sf01Header {
@@ -123,7 +125,7 @@ impl EsEntityIO for Sf01Header {
     }
 
     fn serialise(&self) -> Vec<u8> {
-        let records = self.serialse_records(todo!(), todo!());
+        let records = self.serialse_records(todo!());
         let mut serialised_record = Vec::with_capacity(24 + records.len());
         serialised_record.extend_from_slice(&SF01_HEADER_ID);
         serialised_record.extend((records.len() as u32).to_le_bytes());
@@ -138,12 +140,12 @@ impl EsEntityIO for Sf01Header {
 }
 
 impl Sf01Header {
-    fn serialse_records(&self, record_count: u32, next_object_id: u32) -> Vec<u8> {
+    fn serialse_records(&self, record_count: u32) -> Vec<u8> {
         let mut records = Vec::new();
 
         let mut header_payload = Sf01HeaderRecord::RECORD_FIELD_HEADER_VERSION.to_vec();
         header_payload.extend(record_count.to_le_bytes());
-        header_payload.extend(next_object_id.to_le_bytes());
+        header_payload.extend(16779264u32.to_le_bytes());
 
         records.push(Sf01GenericRecord::new(
             Sf01HeaderRecord::Header.record_id_binary(),
@@ -197,11 +199,6 @@ impl Sf01Header {
         } else {
             FILE_EXTENSION_NO_MASTER
         }
-    }
-
-    pub fn calculate_next_object_id() {
-        // next id (3 bytes) = 2048 + min(5 * number_of_times_file_loaded, 5) + 1
-        // Does not seem to matter from personal testing, just set it to 16779264.
     }
 
     pub fn calculate_number_of_records() {

@@ -1,6 +1,6 @@
 //! This modules contains header related records.
 
-use crate::utils::NullTerminatedString;
+use crate::{esdata::{EsEntityIO, sf01record::Sf01GenericRecord}, utils::NullTerminatedString};
 
 pub enum Sf01HeaderRecord {
     /// Record containing header information.
@@ -13,7 +13,8 @@ pub enum Sf01HeaderRecord {
     Description,
     Master,
     Overrides,
-    SCRN,
+    /// Internal screenshot record. Can be ignored for (de-)compilation.
+    Screenshot,
     TransientIDs,
     /// Internal version control branch name record. Can be ignored for (de-)compilation.
     VersionControlBranchName,
@@ -53,7 +54,7 @@ impl Sf01HeaderRecord {
             Sf01HeaderRecord::Description => Self::RECORD_ID_DESCRIPTION,
             Sf01HeaderRecord::Master => Self::RECORD_ID_MASTER,
             Sf01HeaderRecord::Overrides => Self::RECORD_ID_OVERRIDES,
-            Sf01HeaderRecord::SCRN => Self::RECORD_ID_SCRN,
+            Sf01HeaderRecord::Screenshot => Self::RECORD_ID_SCRN,
             Sf01HeaderRecord::TransientIDs => Self::RECORD_ID_TRANSIENT_IDS,
             Sf01HeaderRecord::VersionControlBranchName => {
                 Self::RECORD_ID_VERSION_CONTROL_BRANCH_NAME
@@ -74,25 +75,66 @@ impl Sf01HeaderRecord {
         NullTerminatedString::new(Self::RECORD_FIELD_AUTHOR_DEFAULT).unwrap()
     }
 
-//     fn transient_ids_from_generic(record: Sf01GenericRecord) -> Result<Self, ApplicationError> {
-//         let mut buffer_32: [u8; 4] = [0; 4];
-//         let raw_payload = record.take_payload();
-//         let payload_size = raw_payload.len() as u64;
-//         let mut payload = Cursor::new(raw_payload);
+    //     fn transient_ids_from_generic(record: Sf01GenericRecord) -> Result<Self, ApplicationError> {
+    //         let mut buffer_32: [u8; 4] = [0; 4];
+    //         let raw_payload = record.take_payload();
+    //         let payload_size = raw_payload.len() as u64;
+    //         let mut payload = Cursor::new(raw_payload);
 
-//         payload.read_exact(&mut buffer_32).map_err(|err| {
-//             ApplicationError::from(err).chain("Failed to read SF01 TNAM type index.")
-//         })?;
-//         let type_index = u32::from_le_bytes(buffer_32);
-//         let mut ids = Vec::new();
-//         while payload.position() < payload_size {
-//             payload.read_exact(&mut buffer_32).map_err(|err| {
-//                 ApplicationError::from(err).chain("Failed to read SF01 TNAM IDs.")
-//             })?;
-//             ids.push(u32::from_le_bytes(buffer_32));
-//         }
-//         Ok(Self::TransientIDs { type_index, ids })
-//     }
+    //         payload.read_exact(&mut buffer_32).map_err(|err| {
+    //             ApplicationError::from(err).chain("Failed to read SF01 TNAM type index.")
+    //         })?;
+    //         let type_index = u32::from_le_bytes(buffer_32);
+    //         let mut ids = Vec::new();
+    //         while payload.position() < payload_size {
+    //             payload.read_exact(&mut buffer_32).map_err(|err| {
+    //                 ApplicationError::from(err).chain("Failed to read SF01 TNAM IDs.")
+    //             })?;
+    //             ids.push(u32::from_le_bytes(buffer_32));
+    //         }
+    //         Ok(Self::TransientIDs { type_index, ids })
+    //     }
+}
+
+pub struct Sf01MasterRecord {
+    master: NullTerminatedString,
+    override_ids: Vec<u32>,
+}
+
+impl Sf01MasterRecord {
+    pub const VALID_OVERRIDE_RECORD_IDS: [&str; 16] = [
+        "ACHR", "LAND", "NAVM", "REFR", "PGRE", "PHZD", "PMIS", "PARW", "PBAR", "PBEA", "PCON",
+        "PFLA", "DLBR", "DIAL", "INFO", "SCEN",
+    ];
+
+    pub fn serialise(records: &[Self]) -> Vec<u8> {
+        let mut records_master = Vec::with_capacity(records.len());
+        let mut records_overrides = Vec::with_capacity(records.len());
+
+        for record in records {
+            records_master.push(Sf01GenericRecord::new(
+                Sf01HeaderRecord::Master.record_id_binary(),
+                record.master.serialise(),
+            ));
+            let mut override_payload = Vec::with_capacity(record.override_ids.len() * 4);
+            for override_id in record.override_ids.iter() {
+                override_payload.extend(override_id.to_le_bytes());
+            }
+            records_overrides.push(Sf01GenericRecord::new(
+                Sf01HeaderRecord::Overrides.record_id_binary(),
+                override_payload,
+            ));
+        }
+
+        let mut serialised_records = Vec::new();
+        for record in records_master {
+            serialised_records.extend(record.serialise());
+        }
+        for record in records_overrides {
+            serialised_records.extend(record.serialise());
+        }
+        serialised_records
+    }
 }
 
 #[cfg(test)]
@@ -110,7 +152,7 @@ mod tests {
             Sf01HeaderRecord::Description,
             Sf01HeaderRecord::Master,
             Sf01HeaderRecord::Overrides,
-            Sf01HeaderRecord::SCRN,
+            Sf01HeaderRecord::Screenshot,
             Sf01HeaderRecord::TransientIDs,
             Sf01HeaderRecord::VersionControlBranchName,
             Sf01HeaderRecord::InternalVersion,

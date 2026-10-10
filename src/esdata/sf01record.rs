@@ -101,7 +101,7 @@ impl EsEntityIO for Sf01GenericRecord {
     }
 
     fn serialise(&self) -> Vec<u8> {
-        let mut serialised_record = Vec::with_capacity(6);
+        let mut serialised_record = Vec::new();
         if self.size() > u16::MAX as u32 {
             // Use extended size format.
             serialised_record.extend_from_slice(&SF01_RECORD_ID_EXTENDED_SIZE);
