@@ -8,13 +8,10 @@ use std::{
 use getset::{CopyGetters, Getters};
 
 use crate::{
-    error::{ApplicationError, ApplicationErrorType},
-    esdata::{
+    error::{ApplicationError, ApplicationErrorType}, esdata::{
         EsEntityIO,
         sf01record::{Sf01GenericRecord, sf01headerrecords::Sf01HeaderRecord},
-    },
-    essource::sf01headersource::{Sf01HeaderFlagsSource, Sf01HeaderSource},
-    utils::{NullTerminatedString, is_bit_set_u32, set_bit_u32},
+    }, essource::sf01headersource::{Output_Type, Sf01HeaderSource}, utils::{NullTerminatedString, is_bit_set_u32, set_bit_u32},
 };
 
 /// The sf01 header ID.
@@ -177,7 +174,7 @@ impl Sf01Header {
         let source = source.borrow();
 
         Ok(Self {
-            flags: Sf01HeaderFlags::from_source(source.flags()),
+            flags: Sf01HeaderFlags::from_source(source.output_type(), source.base_flags(), source.localised().unwrap_or(false)),
             form_id: source.form_id().unwrap_or(0),
             version_control_1: source.version_control_1().unwrap_or(0),
             form_version: source.form_version().unwrap_or(582),
@@ -189,12 +186,21 @@ impl Sf01Header {
 
     /// Returns the default file extension for compilation.
     pub fn get_file_extension(&self) -> &str {
-        if self.flags().full_master() || self.flags().small_master() || self.flags().medium_master()
+        if self.flags().master() || self.flags().small_master() || self.flags().medium_master()
         {
             FILE_EXTENSION_MASTER
         } else {
             FILE_EXTENSION_NO_MASTER
         }
+    }
+
+    pub fn calculate_next_object_id() {
+        // next id (3 bytes) = 2048 + min(5 * number_of_times_file_loaded, 5) + 1
+        // Does not seem to matter from personal testing, just set it to 16779264.
+    }
+
+    pub fn calculate_number_of_records() {
+        // number_of_groups + number_of_group_records
     }
 }
 
@@ -205,15 +211,15 @@ pub struct Sf01HeaderFlags {
 }
 
 impl Sf01HeaderFlags {
-    const INDEX_MASTER_FULL: u32 = 0;
+    const INDEX_MASTER: u32 = 0;
     const INDEX_LOCALISED: u32 = 7;
-    const INDEX_MASTER_MEDIUM: u32 = 8;
-    const INDEX_MASTER_SMALL: u32 = 10;
+    const INDEX_MASTER_MEDIUM: u32 = 10;
+    const INDEX_MASTER_SMALL: u32 = 8;
     const INDEX_BLUEPRINT: u32 = 11;
 
-    /// Returns true if the full master flag is set.
-    pub fn full_master(&self) -> bool {
-        is_bit_set_u32(self.flags, Self::INDEX_MASTER_FULL)
+    /// Returns true if the master flag is set.
+    pub fn master(&self) -> bool {
+        is_bit_set_u32(self.flags, Self::INDEX_MASTER)
     }
 
     /// Returns true if the medium master flag is set.
@@ -236,13 +242,13 @@ impl Sf01HeaderFlags {
         is_bit_set_u32(self.flags, Self::INDEX_BLUEPRINT)
     }
 
-    /// Returns the header flags with the full master flag set to the specified value.
+    /// Returns the header flags with the master flag set to the specified value.
     ///
     /// # Parameters
     ///
     /// * `value` - the bit value to set
-    pub fn set_full_master(&self, value: bool) -> Self {
-        set_bit_u32(self.flags, Self::INDEX_MASTER_FULL, value).into()
+    pub fn set_master(&self, value: bool) -> Self {
+        set_bit_u32(self.flags, Self::INDEX_MASTER, value).into()
     }
 
     /// Returns the header flags with the medium master flag set to the specified value.
@@ -281,14 +287,24 @@ impl Sf01HeaderFlags {
         set_bit_u32(self.flags, Self::INDEX_BLUEPRINT, value).into()
     }
 
-    pub fn from_source<T: Borrow<Sf01HeaderFlagsSource>>(source: T) -> Self {
-        let source = source.borrow();
-        Self::from(source.base_flags())
-            .set_full_master(source.full_master())
-            .set_medium_master(source.medium_master())
-            .set_small_master(source.small_master())
-            .set_localised(source.localised())
-            .set_blueprint(source.blueprint())
+    /// Returns `true` if a non canonical bit has been set.
+    pub fn is_non_canonical(&self) -> bool {
+        self.set_blueprint(false).set_localised(false).set_master(false).set_medium_master(false).set_small_master(false).flags() != 0
+    }
+
+    pub fn from_source(output_type: Option<Output_Type>, base_flags: Option<u32>, localised: bool) -> Self {
+        let flags = Self::from(base_flags.unwrap_or(0)).set_localised(localised);
+        if let Some(ot) = output_type {
+            match ot {
+                Output_Type::DEVELOPMENT => flags.set_master(false).set_medium_master(false).set_small_master(false).set_blueprint(false),
+                Output_Type::MASTER_FULL => flags.set_master(true).set_medium_master(false).set_small_master(false).set_blueprint(false),
+                Output_Type::MASTER_MEDIUM => flags.set_master(true).set_medium_master(true).set_small_master(false).set_blueprint(false),
+                Output_Type::MASTER_SMALL => flags.set_master(true).set_medium_master(false).set_small_master(true).set_blueprint(false),
+                Output_Type::MASTER_BLUEPRINT => flags.set_master(true).set_medium_master(false).set_small_master(false).set_blueprint(true),
+            }
+        } else {
+            flags
+        }
     }
 }
 

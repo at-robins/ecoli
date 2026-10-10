@@ -4,18 +4,25 @@ use std::{borrow::Borrow, path::Path};
 
 use getset::{CopyGetters, Getters};
 use serde::{Deserialize, Serialize};
+use serde_with::skip_serializing_none;
 
 use crate::{
-    error::ApplicationError, esdata::sf01header::{Sf01Header, Sf01HeaderFlags}, utils::NullTerminatedString,
+    error::ApplicationError,
+    esdata::sf01header::{Sf01Header, Sf01HeaderFlags},
+    utils::NullTerminatedString,
 };
 
+#[skip_serializing_none]
 #[derive(Debug, Getters, CopyGetters, Deserialize, Serialize)]
 pub struct Sf01HeaderSource {
     #[getset(get = "pub")]
     id: String,
-    #[getset(get = "pub")]
-    #[serde(default)]
-    flags: Sf01HeaderFlagsSource,
+    #[getset(get_copy = "pub")]
+    base_flags: Option<u32>,
+    #[getset(get_copy = "pub")]
+    localised: Option<bool>,
+    #[getset(get_copy = "pub")]
+    output_type: Option<Output_Type>,
     #[getset(get_copy = "pub")]
     form_id: Option<u32>,
     #[getset(get_copy = "pub")]
@@ -36,9 +43,17 @@ impl Sf01HeaderSource {
 
     pub fn from_compiled<S: Into<String>, H: Borrow<Sf01Header>>(id: S, header: H) -> Self {
         let header = header.borrow();
+        let flags = header.flags();
+
         Self {
             id: id.into(),
-            flags: header.flags().into(),
+            base_flags: if flags.is_non_canonical() {
+                Some(flags.flags())
+            } else {
+                None
+            },
+            localised: if flags.localised() { Some(true) } else { None },
+            output_type: flags.into(),
             form_id: Some(header.form_id()),
             version_control_1: Some(header.version_control_1()),
             form_version: Some(header.form_version()),
@@ -77,65 +92,33 @@ impl Sf01HeaderSource {
     }
 }
 
-#[derive(Debug, Deserialize, Serialize, Clone, Copy)]
-pub struct Sf01HeaderFlagsSource {
-    base_flags: Option<u32>,
-    full_master: Option<bool>,
-    medium_master: Option<bool>,
-    small_master: Option<bool>,
-    localised: Option<bool>,
-    blueprint: Option<bool>,
+#[derive(Clone, Copy, Debug, Deserialize, Serialize)]
+pub enum Output_Type {
+    DEVELOPMENT,
+    MASTER_FULL,
+    MASTER_MEDIUM,
+    MASTER_SMALL,
+    MASTER_BLUEPRINT,
 }
 
-impl Sf01HeaderFlagsSource {
-    pub fn base_flags(&self) -> u32 {
-        self.base_flags.unwrap_or(0)
-    }
+impl From<Sf01HeaderFlags> for Option<Output_Type> {
+    fn from(flags: Sf01HeaderFlags) -> Self {
 
-    pub fn full_master(&self) -> bool {
-        self.full_master.unwrap_or(false)
-    }
-
-    pub fn medium_master(&self) -> bool {
-        self.medium_master.unwrap_or(false)
-    }
-
-    pub fn small_master(&self) -> bool {
-        self.small_master.unwrap_or(false)
-    }
-
-    pub fn localised(&self) -> bool {
-        self.localised.unwrap_or(false)
-    }
-
-    pub fn blueprint(&self) -> bool {
-        self.blueprint.unwrap_or(false)
-    }
-}
-
-impl From<Sf01HeaderFlags> for Sf01HeaderFlagsSource {
-    fn from(value: Sf01HeaderFlags) -> Self {
-        Self {
-            base_flags: Some(value.flags()),
-            full_master: Some(value.full_master()),
-            medium_master: Some(value.medium_master()),
-            small_master: Some(value.small_master()),
-            localised: Some(value.localised()),
-            blueprint: Some(value.blueprint()),
-        }
-    }
-}
-
-impl Default for Sf01HeaderFlagsSource {
-    fn default() -> Self {
-        Sf01HeaderFlagsSource {
-            base_flags: Some(0),
-            full_master: None,
-            medium_master: None,
-            small_master: None,
-            localised: None,
-            blueprint: None,
-        }
+        Some(if flags.master() {
+            if flags.blueprint() && !flags.medium_master() && !flags.small_master() {
+             Output_Type::MASTER_BLUEPRINT
+            } else if flags.small_master() && !flags.blueprint() && !flags.medium_master() {
+                Output_Type::MASTER_SMALL
+            } else if flags.medium_master()  && !flags.blueprint() && !flags.small_master(){
+                Output_Type::MASTER_MEDIUM
+            } else if !flags.blueprint() && !flags.medium_master() && !flags.small_master() {
+                Output_Type::MASTER_FULL
+            } else {
+                return None;
+            }
+        } else {
+            Output_Type::DEVELOPMENT
+        })
     }
 }
 
@@ -145,14 +128,6 @@ impl Default for Sf01HeaderFlagsSource {
 
 //     #[test]
 //     fn test_serialise() {
-//         let test_data = Sf01HeaderFlagsSource {
-//             base_flags: 32,
-//             full_master: true,
-//             medium_master: false,
-//             small_master: false,
-//             localised: true,
-//             blueprint: false,
-//         };
-//         test_data.serialise(".");
+
 //     }
 // }
