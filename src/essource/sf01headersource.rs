@@ -8,7 +8,11 @@ use serde_with::skip_serializing_none;
 
 use crate::{
     error::ApplicationError,
-    esdata::sf01header::{Sf01Header, Sf01HeaderFlags},
+    esdata::sf01header::{
+        HEADER_FIELD_DEFAULT_FORM_ID, HEADER_FIELD_DEFAULT_FORM_VERSION,
+        HEADER_FIELD_DEFAULT_VERSION_CONTROL_1, HEADER_FIELD_DEFAULT_VERSION_CONTROL_2, Sf01Header,
+        Sf01HeaderFlags,
+    },
     utils::NullTerminatedString,
 };
 
@@ -22,7 +26,7 @@ pub struct Sf01HeaderSource {
     #[getset(get_copy = "pub")]
     localised: Option<bool>,
     #[getset(get_copy = "pub")]
-    output_type: Option<Output_Type>,
+    output_type: Option<OutputType>,
     #[getset(get_copy = "pub")]
     form_id: Option<u32>,
     #[getset(get_copy = "pub")]
@@ -54,10 +58,30 @@ impl Sf01HeaderSource {
             },
             localised: if flags.localised() { Some(true) } else { None },
             output_type: flags.into(),
-            form_id: Some(header.form_id()),
-            version_control_1: Some(header.version_control_1()),
-            form_version: Some(header.form_version()),
-            version_control_2: Some(header.version_control_2()),
+            form_id: if header.form_id() != HEADER_FIELD_DEFAULT_FORM_ID {
+                Some(header.form_id())
+            } else {
+                None
+            },
+            version_control_1: if header.version_control_1()
+                != HEADER_FIELD_DEFAULT_VERSION_CONTROL_1
+            {
+                Some(header.version_control_1())
+            } else {
+                None
+            },
+            form_version: if header.form_version() != HEADER_FIELD_DEFAULT_FORM_VERSION {
+                Some(header.form_version())
+            } else {
+                None
+            },
+            version_control_2: if header.version_control_2()
+                != HEADER_FIELD_DEFAULT_VERSION_CONTROL_2
+            {
+                Some(header.version_control_2())
+            } else {
+                None
+            },
             author: header.author().clone(),
             description: header.description().clone(),
         }
@@ -93,32 +117,49 @@ impl Sf01HeaderSource {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize, Serialize)]
-pub enum Output_Type {
-    DEVELOPMENT,
-    MASTER_FULL,
-    MASTER_MEDIUM,
-    MASTER_SMALL,
-    MASTER_BLUEPRINT,
+pub enum OutputType {
+    #[serde(rename = "development")]
+    Development,
+    #[serde(rename = "full master")]
+    MasterFull,
+    #[serde(rename = "medium master")]
+    MasterMedium,
+    #[serde(rename = "small master")]
+    MasterSmall,
+    #[serde(rename = "blueprint")]
+    MasterBlueprint,
 }
 
-impl From<Sf01HeaderFlags> for Option<Output_Type> {
+impl From<Sf01HeaderFlags> for Option<OutputType> {
     fn from(flags: Sf01HeaderFlags) -> Self {
-
         Some(if flags.master() {
             if flags.blueprint() && !flags.medium_master() && !flags.small_master() {
-             Output_Type::MASTER_BLUEPRINT
+                OutputType::MasterBlueprint
             } else if flags.small_master() && !flags.blueprint() && !flags.medium_master() {
-                Output_Type::MASTER_SMALL
-            } else if flags.medium_master()  && !flags.blueprint() && !flags.small_master(){
-                Output_Type::MASTER_MEDIUM
+                OutputType::MasterSmall
+            } else if flags.medium_master() && !flags.blueprint() && !flags.small_master() {
+                OutputType::MasterMedium
             } else if !flags.blueprint() && !flags.medium_master() && !flags.small_master() {
-                Output_Type::MASTER_FULL
+                OutputType::MasterFull
             } else {
                 return None;
             }
         } else {
-            Output_Type::DEVELOPMENT
+            OutputType::Development
         })
+    }
+}
+
+impl std::fmt::Display for OutputType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            OutputType::Development => "development",
+            OutputType::MasterFull => "full master",
+            OutputType::MasterMedium => "medium master",
+            OutputType::MasterSmall => "small master",
+            OutputType::MasterBlueprint => "blueprint",
+        };
+        write!(f, "{}", name)
     }
 }
 

@@ -11,7 +11,7 @@ use crate::{
     error::{ApplicationError, ApplicationErrorType}, esdata::{
         EsEntityIO,
         sf01record::{Sf01GenericRecord, sf01headerrecords::Sf01HeaderRecord},
-    }, essource::sf01headersource::{Output_Type, Sf01HeaderSource}, utils::{NullTerminatedString, is_bit_set_u32, set_bit_u32},
+    }, essource::sf01headersource::{OutputType, Sf01HeaderSource}, utils::{NullTerminatedString, is_bit_set_u32, set_bit_u32},
 };
 
 /// The sf01 header ID.
@@ -20,6 +20,11 @@ const SF01_HEADER_ID: [u8; 4] = [84, 69, 83, 52];
 const FILE_EXTENSION_NO_MASTER: &str = "esp";
 /// The default file extension of a master file.
 const FILE_EXTENSION_MASTER: &str = "esm";
+
+pub const HEADER_FIELD_DEFAULT_FORM_ID: u32 = 0;
+pub const HEADER_FIELD_DEFAULT_VERSION_CONTROL_1: u32 = 0;
+pub const HEADER_FIELD_DEFAULT_VERSION_CONTROL_2: u16 = 0;
+pub const HEADER_FIELD_DEFAULT_FORM_VERSION: u16 = 582;
 
 #[derive(Debug, CopyGetters, Getters)]
 pub struct Sf01Header {
@@ -175,10 +180,10 @@ impl Sf01Header {
 
         Ok(Self {
             flags: Sf01HeaderFlags::from_source(source.output_type(), source.base_flags(), source.localised().unwrap_or(false)),
-            form_id: source.form_id().unwrap_or(0),
-            version_control_1: source.version_control_1().unwrap_or(0),
-            form_version: source.form_version().unwrap_or(582),
-            version_control_2: source.version_control_2().unwrap_or(0),
+            form_id: source.form_id().unwrap_or(HEADER_FIELD_DEFAULT_FORM_ID),
+            version_control_1: source.version_control_1().unwrap_or(HEADER_FIELD_DEFAULT_VERSION_CONTROL_1),
+            form_version: source.form_version().unwrap_or(HEADER_FIELD_DEFAULT_FORM_VERSION),
+            version_control_2: source.version_control_2().unwrap_or(HEADER_FIELD_DEFAULT_VERSION_CONTROL_2),
             author: source.author().clone(),
             description: source.description().clone(),
         })
@@ -292,15 +297,15 @@ impl Sf01HeaderFlags {
         self.set_blueprint(false).set_localised(false).set_master(false).set_medium_master(false).set_small_master(false).flags() != 0
     }
 
-    pub fn from_source(output_type: Option<Output_Type>, base_flags: Option<u32>, localised: bool) -> Self {
+    pub fn from_source(output_type: Option<OutputType>, base_flags: Option<u32>, localised: bool) -> Self {
         let flags = Self::from(base_flags.unwrap_or(0)).set_localised(localised);
         if let Some(ot) = output_type {
             match ot {
-                Output_Type::DEVELOPMENT => flags.set_master(false).set_medium_master(false).set_small_master(false).set_blueprint(false),
-                Output_Type::MASTER_FULL => flags.set_master(true).set_medium_master(false).set_small_master(false).set_blueprint(false),
-                Output_Type::MASTER_MEDIUM => flags.set_master(true).set_medium_master(true).set_small_master(false).set_blueprint(false),
-                Output_Type::MASTER_SMALL => flags.set_master(true).set_medium_master(false).set_small_master(true).set_blueprint(false),
-                Output_Type::MASTER_BLUEPRINT => flags.set_master(true).set_medium_master(false).set_small_master(false).set_blueprint(true),
+                OutputType::Development => flags.set_master(false).set_medium_master(false).set_small_master(false).set_blueprint(false),
+                OutputType::MasterFull => flags.set_master(true).set_medium_master(false).set_small_master(false).set_blueprint(false),
+                OutputType::MasterMedium => flags.set_master(true).set_medium_master(true).set_small_master(false).set_blueprint(false),
+                OutputType::MasterSmall => flags.set_master(true).set_medium_master(false).set_small_master(true).set_blueprint(false),
+                OutputType::MasterBlueprint => flags.set_master(true).set_medium_master(false).set_small_master(false).set_blueprint(true),
             }
         } else {
             flags
