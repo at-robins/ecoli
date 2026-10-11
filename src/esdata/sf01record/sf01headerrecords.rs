@@ -1,5 +1,7 @@
 //! This modules contains header related records.
 
+use std::collections::HashSet;
+
 use crate::{esdata::{EsEntityIO, sf01record::Sf01GenericRecord}, utils::NullTerminatedString};
 
 pub enum Sf01HeaderRecord {
@@ -96,6 +98,7 @@ impl Sf01HeaderRecord {
     //     }
 }
 
+#[derive(Debug)]
 pub struct Sf01MasterRecord {
     master: NullTerminatedString,
     override_ids: Vec<u32>,
@@ -107,34 +110,42 @@ impl Sf01MasterRecord {
         "PFLA", "DLBR", "DIAL", "INFO", "SCEN",
     ];
 
-    pub fn serialise(records: &[Self]) -> Vec<u8> {
-        let mut records_master = Vec::with_capacity(records.len());
-        let mut records_overrides = Vec::with_capacity(records.len());
+    pub fn get_override_ids() {
+        // Scan all overriden CELL records.
+        // Filter for temporary cells.
+        // Add all valid overriden forms.
+        // Unclear for quests (DIAL, INFO, SCEN)
+        todo!("Implement")
+    }
+
+    /// Converts the specified master records to generic records.
+    /// 
+    /// # Parameters
+    /// 
+    /// * `records` - the master records to convert
+    pub fn to_generic_records(records: &[Self]) -> Vec<Sf01GenericRecord> {
+        let mut generic_records = Vec::with_capacity(records.len() + 1);
+        let mut overrides: HashSet<u32> = HashSet::new();
 
         for record in records {
-            records_master.push(Sf01GenericRecord::new(
+            generic_records.push(Sf01GenericRecord::new(
                 Sf01HeaderRecord::Master.record_id_binary(),
                 record.master.serialise(),
             ));
-            let mut override_payload = Vec::with_capacity(record.override_ids.len() * 4);
-            for override_id in record.override_ids.iter() {
-                override_payload.extend(override_id.to_le_bytes());
-            }
-            records_overrides.push(Sf01GenericRecord::new(
-                Sf01HeaderRecord::Overrides.record_id_binary(),
-                override_payload,
-            ));
+            overrides.extend(&record.override_ids);
         }
+        let mut override_payload = Vec::with_capacity(overrides.len() * 4);
+        for override_id in overrides.into_iter() {
+            override_payload.extend(override_id.to_le_bytes());
+        }
+        generic_records.push(Sf01GenericRecord::new(
+            Sf01HeaderRecord::Overrides.record_id_binary(),
+            override_payload,
+        ));
 
-        let mut serialised_records = Vec::new();
-        for record in records_master {
-            serialised_records.extend(record.serialise());
-        }
-        for record in records_overrides {
-            serialised_records.extend(record.serialise());
-        }
-        serialised_records
+        generic_records
     }
+
 }
 
 #[cfg(test)]

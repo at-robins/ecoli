@@ -43,6 +43,28 @@ pub fn set_bit_u32(value: u32, bit_index: u32, bit: bool) -> u32 {
     }
 }
 
+/// Converts a binary value to a vector of u32 values if possibles.
+///
+/// # Parameters
+///
+/// * `value` - the binary value to convert
+pub fn u32_vector_from_binary(value: &[u8]) -> Result<Vec<u32>, ApplicationError> {
+    let (chunks, []) = value.as_chunks::<4>() else {
+        return Err(ApplicationError::new(
+            ApplicationErrorType::InputDataError,
+            format!(
+                "Binary value {:?} of lenght {} cannot be fully converted to u32.",
+                value,
+                value.len()
+            ),
+        ));
+    };
+    Ok(chunks
+        .into_iter()
+        .map(|chunk| u32::from_le_bytes(*chunk))
+        .collect())
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(transparent)]
 pub struct NullTerminatedString {
@@ -85,7 +107,7 @@ impl NullTerminatedString {
         self.value.as_str()
     }
 
-    /// Creates a new NULL terminated string if the input binary data is a valid string and 
+    /// Creates a new NULL terminated string if the input binary data is a valid string and
     /// does not contain internal termination characters.
     ///
     /// # Paramerters
@@ -163,6 +185,21 @@ mod tests {
     #[should_panic]
     fn test_set_bit_u32_panic() {
         set_bit_u32(0, 32, true);
+    }
+
+    #[test]
+    fn test_u32_vector_from_binary() {
+        let test_value: Vec<u32> = vec![489, 488, 213810401, 131, 19193, 1, 0];
+        let binary_sequence: Vec<u8> = test_value
+            .iter()
+            .flat_map(|value| u32::to_le_bytes(*value))
+            .collect();
+        assert_eq!(u32_vector_from_binary(&[]).unwrap(), Vec::new());
+        assert_eq!(u32_vector_from_binary(&binary_sequence).unwrap(), test_value);
+        assert!(u32_vector_from_binary(&[1]).is_err());
+        assert!(u32_vector_from_binary(&[1, 123]).is_err());
+        assert!(u32_vector_from_binary(&[1, 12, 18]).is_err());
+        assert!(u32_vector_from_binary(&[1, 113, 49, 40, 103]).is_err());
     }
 
     #[test]

@@ -9,9 +9,8 @@ use getset::{CopyGetters, Getters};
 
 use crate::{
     error::{ApplicationError, ApplicationErrorType}, esdata::{
-        EsEntityIO,
-        sf01record::{Sf01GenericRecord, sf01headerrecords::Sf01HeaderRecord},
-    }, essource::sf01headersource::{OutputType, Sf01HeaderSource}, utils::{NullTerminatedString, is_bit_set_u32, set_bit_u32},
+        EsEntityIO, sf01record::{Sf01GenericRecord, sf01headerrecords::{Sf01HeaderRecord, Sf01MasterRecord}},
+    }, essource::sf01headersource::{OutputType, Sf01HeaderSource}, utils::{NullTerminatedString, is_bit_set_u32, set_bit_u32, u32_vector_from_binary},
 };
 
 /// The sf01 header ID.
@@ -43,7 +42,7 @@ pub struct Sf01Header {
     #[getset(get = "pub")]
     description: Option<NullTerminatedString>,
     #[getset(get = "pub")]
-    dependencies: Vec<NullTerminatedString>,
+    dependencies: Vec<Sf01MasterRecord>,
 }
 
 impl EsEntityIO for Sf01Header {
@@ -96,11 +95,14 @@ impl EsEntityIO for Sf01Header {
 
         let mut author = None;
         let mut description = None;
+        let mut masters = Vec::new();
+        let mut overrides =  Vec::new();
         if size > 0 {
             let mut payload_buffer: Vec<u8> = vec![0; size as usize];
             reader.read_exact(&mut payload_buffer)?;
 
             let mut payload_reader = Cursor::new(payload_buffer);
+
 
             while payload_reader.position() < size as u64 {
                 let record = Sf01GenericRecord::read(&mut payload_reader)
@@ -109,9 +111,15 @@ impl EsEntityIO for Sf01Header {
                     author = Some(NullTerminatedString::from_binary(record.take_payload())?)
                 } else if record.id() == Sf01HeaderRecord::Description.record_id_binary() {
                     description = Some(NullTerminatedString::from_binary(record.take_payload())?)
-                }
+                } else if record.id() == Sf01HeaderRecord::Master.record_id_binary() {
+                    masters.push(NullTerminatedString::from_binary(record.take_payload())?);
+                }  else if record.id() == Sf01HeaderRecord::Overrides.record_id_binary() {
+                    overrides.extend(u32_vector_from_binary(&record.take_payload())?);
+                } 
             }
         }
+
+        todo!("Create master records.");
 
         Ok(Self {
             flags,
@@ -121,6 +129,7 @@ impl EsEntityIO for Sf01Header {
             version_control_2,
             author,
             description,
+            dependencies: Vec::new()
         })
     }
 
@@ -169,6 +178,7 @@ impl Sf01Header {
                 description.serialise(),
             ));
         }
+        records.extend(Sf01MasterRecord::to_generic_records(self.dependencies()));
 
         let mut serialised_records = Vec::new();
         for record in records {
@@ -188,6 +198,7 @@ impl Sf01Header {
             version_control_2: source.version_control_2().unwrap_or(HEADER_FIELD_DEFAULT_VERSION_CONTROL_2),
             author: source.author().clone(),
             description: source.description().clone(),
+            dependencies: Vec::new(),
         })
     }
 
@@ -203,6 +214,10 @@ impl Sf01Header {
 
     pub fn calculate_number_of_records() {
         // number_of_groups + number_of_group_records
+    }
+
+    pub fn set_dependencies(&mut self, dependencies: Vec<Sf01MasterRecord>) {
+        self.dependencies = dependencies;
     }
 }
 
