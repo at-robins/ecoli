@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use crate::{esdata::{EsEntityIO, sf01record::Sf01GenericRecord}, utils::NullTerminatedString};
+use crate::{esdata::{sf01record::Sf01GenericRecord}, utils::NullTerminatedString};
 
 pub enum Sf01HeaderRecord {
     /// Record containing header information.

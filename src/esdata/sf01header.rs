@@ -8,9 +8,16 @@ use std::{
 use getset::{CopyGetters, Getters};
 
 use crate::{
-    error::{ApplicationError, ApplicationErrorType}, esdata::{
-        EsEntityIO, sf01record::{Sf01GenericRecord, sf01headerrecords::{Sf01HeaderRecord, Sf01MasterRecord}},
-    }, essource::sf01headersource::{OutputType, Sf01HeaderSource}, utils::{NullTerminatedString, is_bit_set_u32, set_bit_u32, u32_vector_from_binary},
+    error::{ApplicationError, ApplicationErrorType},
+    esdata::{
+        EsEntityIO,
+        sf01record::{
+            Sf01GenericEntity, Sf01GenericRecord,
+            sf01headerrecords::{Sf01HeaderRecord, Sf01MasterRecord},
+        },
+    },
+    essource::sf01headersource::{OutputType, Sf01HeaderSource},
+    utils::{NullTerminatedString, is_bit_set_u32, set_bit_u32, u32_vector_from_binary},
 };
 
 /// The sf01 header ID.
@@ -47,64 +54,33 @@ pub struct Sf01Header {
 
 impl EsEntityIO for Sf01Header {
     fn read<T: Read>(reader: &mut T) -> Result<Self, ApplicationError> {
-        let mut buffer_32: [u8; 4] = [0; 4];
-        let mut buffer_16: [u8; 2] = [0; 2];
+        let header_entity = Sf01GenericEntity::read(reader)
+            .map_err(|err| ApplicationError::from(err).chain("Failed to read SF01 header entity."))?;
 
-        reader
-            .read_exact(&mut buffer_32)
-            .map_err(|err| ApplicationError::from(err).chain("Failed to read SF01 header ID."))?;
-        if buffer_32 != SF01_HEADER_ID {
+        if header_entity.type_id() != SF01_HEADER_ID {
             return Err(ApplicationError::new(
                 ApplicationErrorType::InputDataError,
                 format!(
-                    "Failed to parse input data as SF01 header record. ID sequence {:?} does not match {:?}.",
-                    buffer_32, SF01_HEADER_ID
+                    "Failed to parse input data as SF01 header entity. Type ID sequence {:?} does not match {:?}.",
+                    header_entity.type_id(), SF01_HEADER_ID
                 ),
             ));
         }
 
-        reader
-            .read_exact(&mut buffer_32)
-            .map_err(|err| ApplicationError::from(err).chain("Failed to read SF01 header size."))?;
-        let size = u32::from_le_bytes(buffer_32);
-
-        reader.read_exact(&mut buffer_32).map_err(|err| {
-            ApplicationError::from(err).chain("Failed to read SF01 header flags.")
-        })?;
-        let flags = u32::from_le_bytes(buffer_32).into();
-
-        reader.read_exact(&mut buffer_32).map_err(|err| {
-            ApplicationError::from(err).chain("Failed to read SF01 header form ID.")
-        })?;
-        let form_id = u32::from_le_bytes(buffer_32);
-
-        reader.read_exact(&mut buffer_32).map_err(|err| {
-            ApplicationError::from(err).chain("Failed to read SF01 header version control 1.")
-        })?;
-        let version_control_1 = u32::from_le_bytes(buffer_32);
-
-        reader.read_exact(&mut buffer_16).map_err(|err| {
-            ApplicationError::from(err).chain("Failed to read SF01 header form version.")
-        })?;
-        let form_version = u16::from_le_bytes(buffer_16);
-
-        reader.read_exact(&mut buffer_16).map_err(|err| {
-            ApplicationError::from(err).chain("Failed to read SF01 header version control 2.")
-        })?;
-        let version_control_2 = u16::from_le_bytes(buffer_16);
+        let payload_buffer = header_entity.payload();
 
         let mut author = None;
         let mut description = None;
         let mut masters = Vec::new();
-        let mut overrides =  Vec::new();
-        if size > 0 {
-            let mut payload_buffer: Vec<u8> = vec![0; size as usize];
+        let mut overrides = Vec::new();
+        if !payload_buffer.is_empty() {
+            let payload_size = payload_buffer.len();
+            let mut payload_buffer: Vec<u8> = vec![0; payload_size];
             reader.read_exact(&mut payload_buffer)?;
 
             let mut payload_reader = Cursor::new(payload_buffer);
 
-
-            while payload_reader.position() < size as u64 {
+            while payload_reader.position() < payload_size as u64 {
                 let record = Sf01GenericRecord::read(&mut payload_reader)
                     .map_err(|err| err.chain("Failed to parse header record."))?;
                 if record.id() == Sf01HeaderRecord::Author.record_id_binary() {
@@ -113,23 +89,23 @@ impl EsEntityIO for Sf01Header {
                     description = Some(NullTerminatedString::from_binary(record.take_payload())?)
                 } else if record.id() == Sf01HeaderRecord::Master.record_id_binary() {
                     masters.push(NullTerminatedString::from_binary(record.take_payload())?);
-                }  else if record.id() == Sf01HeaderRecord::Overrides.record_id_binary() {
+                } else if record.id() == Sf01HeaderRecord::Overrides.record_id_binary() {
                     overrides.extend(u32_vector_from_binary(&record.take_payload())?);
-                } 
+                }
             }
         }
 
         todo!("Create master records.");
 
         Ok(Self {
-            flags,
-            form_id,
-            version_control_1,
-            form_version,
-            version_control_2,
+            flags: header_entity.flags().into(),
+            form_id: header_entity. form_id(),
+            version_control_1: header_entity.version_control_1(),
+            form_version: header_entity.form_version(),
+            version_control_2: header_entity.version_control_2(),
             author,
             description,
-            dependencies: Vec::new()
+            dependencies: Vec::new(),
         })
     }
 
@@ -191,11 +167,21 @@ impl Sf01Header {
         let source = source.borrow();
 
         Ok(Self {
-            flags: Sf01HeaderFlags::from_source(source.output_type(), source.base_flags(), source.localised().unwrap_or(false)),
+            flags: Sf01HeaderFlags::from_source(
+                source.output_type(),
+                source.base_flags(),
+                source.localised().unwrap_or(false),
+            ),
             form_id: source.form_id().unwrap_or(HEADER_FIELD_DEFAULT_FORM_ID),
-            version_control_1: source.version_control_1().unwrap_or(HEADER_FIELD_DEFAULT_VERSION_CONTROL_1),
-            form_version: source.form_version().unwrap_or(HEADER_FIELD_DEFAULT_FORM_VERSION),
-            version_control_2: source.version_control_2().unwrap_or(HEADER_FIELD_DEFAULT_VERSION_CONTROL_2),
+            version_control_1: source
+                .version_control_1()
+                .unwrap_or(HEADER_FIELD_DEFAULT_VERSION_CONTROL_1),
+            form_version: source
+                .form_version()
+                .unwrap_or(HEADER_FIELD_DEFAULT_FORM_VERSION),
+            version_control_2: source
+                .version_control_2()
+                .unwrap_or(HEADER_FIELD_DEFAULT_VERSION_CONTROL_2),
             author: source.author().clone(),
             description: source.description().clone(),
             dependencies: Vec::new(),
@@ -204,8 +190,7 @@ impl Sf01Header {
 
     /// Returns the default file extension for compilation.
     pub fn get_file_extension(&self) -> &str {
-        if self.flags().master() || self.flags().small_master() || self.flags().medium_master()
-        {
+        if self.flags().master() || self.flags().small_master() || self.flags().medium_master() {
             FILE_EXTENSION_MASTER
         } else {
             FILE_EXTENSION_NO_MASTER
@@ -306,18 +291,48 @@ impl Sf01HeaderFlags {
 
     /// Returns `true` if a non canonical bit has been set.
     pub fn is_non_canonical(&self) -> bool {
-        self.set_blueprint(false).set_localised(false).set_master(false).set_medium_master(false).set_small_master(false).flags() != 0
+        self.set_blueprint(false)
+            .set_localised(false)
+            .set_master(false)
+            .set_medium_master(false)
+            .set_small_master(false)
+            .flags()
+            != 0
     }
 
-    pub fn from_source(output_type: Option<OutputType>, base_flags: Option<u32>, localised: bool) -> Self {
+    pub fn from_source(
+        output_type: Option<OutputType>,
+        base_flags: Option<u32>,
+        localised: bool,
+    ) -> Self {
         let flags = Self::from(base_flags.unwrap_or(0)).set_localised(localised);
         if let Some(ot) = output_type {
             match ot {
-                OutputType::Development => flags.set_master(false).set_medium_master(false).set_small_master(false).set_blueprint(false),
-                OutputType::MasterFull => flags.set_master(true).set_medium_master(false).set_small_master(false).set_blueprint(false),
-                OutputType::MasterMedium => flags.set_master(true).set_medium_master(true).set_small_master(false).set_blueprint(false),
-                OutputType::MasterSmall => flags.set_master(true).set_medium_master(false).set_small_master(true).set_blueprint(false),
-                OutputType::MasterBlueprint => flags.set_master(true).set_medium_master(false).set_small_master(false).set_blueprint(true),
+                OutputType::Development => flags
+                    .set_master(false)
+                    .set_medium_master(false)
+                    .set_small_master(false)
+                    .set_blueprint(false),
+                OutputType::MasterFull => flags
+                    .set_master(true)
+                    .set_medium_master(false)
+                    .set_small_master(false)
+                    .set_blueprint(false),
+                OutputType::MasterMedium => flags
+                    .set_master(true)
+                    .set_medium_master(true)
+                    .set_small_master(false)
+                    .set_blueprint(false),
+                OutputType::MasterSmall => flags
+                    .set_master(true)
+                    .set_medium_master(false)
+                    .set_small_master(true)
+                    .set_blueprint(false),
+                OutputType::MasterBlueprint => flags
+                    .set_master(true)
+                    .set_medium_master(false)
+                    .set_small_master(false)
+                    .set_blueprint(true),
             }
         } else {
             flags

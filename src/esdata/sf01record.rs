@@ -125,6 +125,96 @@ impl Default for Sf01GenericRecord {
     }
 }
 
+/// A generic top level record that might contain nested structures.
+#[derive(Debug, CopyGetters, Getters)]
+pub struct Sf01GenericEntity {
+    #[getset(get_copy = "pub")]
+    type_id: [u8; 4],
+    #[getset(get_copy = "pub")]
+    flags: u32,
+    #[getset(get_copy = "pub")]
+    form_id: u32,
+    #[getset(get_copy = "pub")]
+    version_control_1: u32,
+    #[getset(get_copy = "pub")]
+    form_version: u16,
+    #[getset(get_copy = "pub")]
+    version_control_2: u16,
+    #[getset(get = "pub")]
+    payload: Vec<u8>,
+}
+
+impl EsEntityIO for Sf01GenericEntity {
+    fn read<T: Read>(reader: &mut T) -> Result<Self, ApplicationError> {
+        let mut type_id: [u8; 4] = [0; 4];
+        let mut buffer_32: [u8; 4] = [0; 4];
+        let mut buffer_16: [u8; 2] = [0; 2];
+
+        reader
+            .read_exact(&mut type_id)
+            .map_err(|err| ApplicationError::from(err).chain("Failed to read SF01 entity type ID."))?;
+
+        reader
+            .read_exact(&mut buffer_32)
+            .map_err(|err| ApplicationError::from(err).chain("Failed to read SF01 entity size."))?;
+        let size = u32::from_le_bytes(buffer_32);
+
+        reader.read_exact(&mut buffer_32).map_err(|err| {
+            ApplicationError::from(err).chain("Failed to read SF01 entity flags.")
+        })?;
+        let flags = u32::from_le_bytes(buffer_32).into();
+
+        reader.read_exact(&mut buffer_32).map_err(|err| {
+            ApplicationError::from(err).chain("Failed to read SF01 entity form ID.")
+        })?;
+        let form_id = u32::from_le_bytes(buffer_32);
+
+        reader.read_exact(&mut buffer_32).map_err(|err| {
+            ApplicationError::from(err).chain("Failed to read SF01 entity version control 1.")
+        })?;
+        let version_control_1 = u32::from_le_bytes(buffer_32);
+
+        reader.read_exact(&mut buffer_16).map_err(|err| {
+            ApplicationError::from(err).chain("Failed to read SF01 entity form version.")
+        })?;
+        let form_version = u16::from_le_bytes(buffer_16);
+
+        reader.read_exact(&mut buffer_16).map_err(|err| {
+            ApplicationError::from(err).chain("Failed to read SF01 entity version control 2.")
+        })?;
+        let version_control_2 = u16::from_le_bytes(buffer_16);
+
+        let mut payload: Vec<u8> = vec![0; size as usize];
+        reader.read_exact(&mut payload).map_err(|err| {
+            ApplicationError::from(err).chain("Failed to read SF01 entity vpayload.")
+        })?;
+
+        Ok(Self {
+            type_id,
+            flags,
+            form_id,
+            version_control_1,
+            form_version,
+            version_control_2,
+            payload,
+        })
+    }
+
+    fn serialise(&self) -> Vec<u8> {
+        let mut serialised_entity = Vec::with_capacity(24 + self.payload().len());
+        serialised_entity.extend(self.type_id());
+        serialised_entity.extend((self.payload().len() as u32).to_le_bytes());
+        serialised_entity.extend(self.flags.to_le_bytes());
+        serialised_entity.extend(self.form_id.to_le_bytes());
+        serialised_entity.extend(self.version_control_1.to_le_bytes());
+        serialised_entity.extend(self.form_version.to_le_bytes());
+        serialised_entity.extend(self.version_control_2.to_le_bytes());
+        serialised_entity.extend(self.payload());
+        serialised_entity
+    }
+}
+
+
 pub mod sf01headerrecords;
 
 #[cfg(test)]
