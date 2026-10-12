@@ -95,8 +95,6 @@ impl EsEntityIO for Sf01Header {
             }
         }
 
-        todo!("Create master records.");
-
         Ok(Self {
             flags: header_entity.flags().into(),
             form_id: header_entity. form_id(),
@@ -105,7 +103,7 @@ impl EsEntityIO for Sf01Header {
             version_control_2: header_entity.version_control_2(),
             author,
             description,
-            dependencies: Vec::new(),
+            dependencies: Sf01MasterRecord::from_raw(masters, overrides),
         })
     }
 

@@ -101,6 +101,7 @@ impl Sf01HeaderRecord {
 #[derive(Debug)]
 pub struct Sf01MasterRecord {
     master: NullTerminatedString,
+    /// TODO: Currently mostly unused. Info is only kept as full array, not per master.
     override_ids: Vec<u32>,
 }
 
@@ -138,12 +139,29 @@ impl Sf01MasterRecord {
         for override_id in overrides.into_iter() {
             override_payload.extend(override_id.to_le_bytes());
         }
+        // TODO: Maybe split by master.
         generic_records.push(Sf01GenericRecord::new(
             Sf01HeaderRecord::Overrides.record_id_binary(),
             override_payload,
         ));
 
         generic_records
+    }
+
+    /// Generates a list of master records by the raw master names and all overriden IDs.
+    /// 
+    /// # Parameters
+    /// 
+    /// * `masters` - the master names
+    /// * `overrides` - all override IDs
+    pub fn from_raw(masters: Vec<NullTerminatedString>, overrides: Vec<u32>) -> Vec<Self> {
+        let mut records = Vec::with_capacity(masters.len());
+        for master in masters {
+            records .push(Self { master, override_ids: Vec::new() });
+        }
+        // TODO: Maybe split the overrides by masters.
+        records.last_mut().map(|last_record| last_record.override_ids = overrides);
+        records
     }
 
 }
