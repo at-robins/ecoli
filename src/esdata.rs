@@ -1,8 +1,7 @@
 //! This module models es data.
 
 use std::{
-    io::{Read},
-    path::Path,
+    io::{Read, Seek}, path::Path,
 };
 
 use crate::{error::ApplicationError, esdata::{sf01decomp::{sf01_compile, sf01_decompile}, sf01header::Sf01Header}};
@@ -14,7 +13,7 @@ pub trait EsEntityIO {
     /// # Parameters
     ///
     /// * ``reader` - the reader to parse data from
-    fn read<T: Read>(reader: &mut T) -> Result<Self, ApplicationError>
+    fn read<T: Read + Seek>(reader: &mut T) -> Result<Self, ApplicationError>
     where
         Self: Sized;
 
@@ -55,4 +54,5 @@ impl EsContainer {
 
 pub mod sf01header;
 pub mod sf01decomp;
+pub mod sf01group;
 pub mod sf01record;

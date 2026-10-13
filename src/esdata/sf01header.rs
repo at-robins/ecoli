@@ -2,7 +2,7 @@
 
 use std::{
     borrow::Borrow,
-    io::{Cursor, Read},
+    io::{Cursor, Read, Seek},
 };
 
 use getset::{CopyGetters, Getters};
@@ -53,16 +53,18 @@ pub struct Sf01Header {
 }
 
 impl EsEntityIO for Sf01Header {
-    fn read<T: Read>(reader: &mut T) -> Result<Self, ApplicationError> {
-        let header_entity = Sf01GenericEntity::read(reader)
-            .map_err(|err| ApplicationError::from(err).chain("Failed to read SF01 header entity."))?;
+    fn read<T: Read + Seek>(reader: &mut T) -> Result<Self, ApplicationError> {
+        let header_entity = Sf01GenericEntity::read(reader).map_err(|err| {
+            ApplicationError::from(err).chain("Failed to read SF01 header entity.")
+        })?;
 
         if header_entity.type_id() != SF01_HEADER_ID {
             return Err(ApplicationError::new(
                 ApplicationErrorType::InputDataError,
                 format!(
                     "Failed to parse input data as SF01 header entity. Type ID sequence {:?} does not match {:?}.",
-                    header_entity.type_id(), SF01_HEADER_ID
+                    header_entity.type_id(),
+                    SF01_HEADER_ID
                 ),
             ));
         }
@@ -75,11 +77,8 @@ impl EsEntityIO for Sf01Header {
         let mut overrides = Vec::new();
         if !payload_buffer.is_empty() {
             let payload_size = payload_buffer.len();
-            let mut payload_buffer: Vec<u8> = vec![0; payload_size];
-            reader.read_exact(&mut payload_buffer)?;
 
             let mut payload_reader = Cursor::new(payload_buffer);
-
             while payload_reader.position() < payload_size as u64 {
                 let record = Sf01GenericRecord::read(&mut payload_reader)
                     .map_err(|err| err.chain("Failed to parse header record."))?;
@@ -97,7 +96,7 @@ impl EsEntityIO for Sf01Header {
 
         Ok(Self {
             flags: header_entity.flags().into(),
-            form_id: header_entity. form_id(),
+            form_id: header_entity.form_id(),
             version_control_1: header_entity.version_control_1(),
             form_version: header_entity.form_version(),
             version_control_2: header_entity.version_control_2(),
@@ -123,11 +122,12 @@ impl EsEntityIO for Sf01Header {
 }
 
 impl Sf01Header {
-    fn serialse_records(&self, record_count: u32) -> Vec<u8> {
+    fn serialse_records(&self, group_entity_count: u32) -> Vec<u8> {
         let mut records = Vec::new();
 
         let mut header_payload = Sf01HeaderRecord::RECORD_FIELD_HEADER_VERSION.to_vec();
-        header_payload.extend(record_count.to_le_bytes());
+        // The header entity also counts.
+        header_payload.extend((group_entity_count + 1).to_le_bytes());
         header_payload.extend(16779264u32.to_le_bytes());
 
         records.push(Sf01GenericRecord::new(
@@ -356,7 +356,7 @@ mod tests {
         ];
         assert_eq!(
             test_data,
-            Sf01Header::read(&mut (test_data.as_slice()))
+            Sf01Header::read(&mut Cursor::new(test_data.as_slice()))
                 .unwrap()
                 .serialise()
         );

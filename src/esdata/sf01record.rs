@@ -1,6 +1,9 @@
 //! This module models sf01 records data.
 
-use std::{borrow::Borrow, io::Read};
+use std::{
+    borrow::Borrow,
+    io::{Read, Seek},
+};
 
 use getset::{CopyGetters, Getters};
 
@@ -22,7 +25,7 @@ pub struct Sf01GenericRecord {
 }
 
 impl Sf01GenericRecord {
-    pub fn new(id: [u8; 4], payload: Vec<u8>,) -> Self {
+    pub fn new(id: [u8; 4], payload: Vec<u8>) -> Self {
         Sf01GenericRecord { id, payload }
     }
 
@@ -45,10 +48,7 @@ impl Sf01GenericRecord {
                 })?
                 .to_le_bytes(),
         };
-        Ok(Self {
-            id,
-            payload,
-        })
+        Ok(Self { id, payload })
     }
 
     /// Takes the payload of the generic record.
@@ -59,11 +59,11 @@ impl Sf01GenericRecord {
     // Returns the payload size in bytes.
     pub fn size(&self) -> u32 {
         self.payload().len() as u32
-    } 
+    }
 }
 
 impl EsEntityIO for Sf01GenericRecord {
-    fn read<T: Read>(reader: &mut T) -> Result<Self, ApplicationError> {
+    fn read<T: Read + Seek>(reader: &mut T) -> Result<Self, ApplicationError> {
         let mut buffer_32: [u8; 4] = [0; 4];
         let mut buffer_16: [u8; 2] = [0; 2];
 
@@ -121,7 +121,10 @@ impl EsEntityIO for Sf01GenericRecord {
 
 impl Default for Sf01GenericRecord {
     fn default() -> Self {
-        Self { id: Default::default(), payload: Default::default() }
+        Self {
+            id: Default::default(),
+            payload: Default::default(),
+        }
     }
 }
 
@@ -150,9 +153,9 @@ impl EsEntityIO for Sf01GenericEntity {
         let mut buffer_32: [u8; 4] = [0; 4];
         let mut buffer_16: [u8; 2] = [0; 2];
 
-        reader
-            .read_exact(&mut type_id)
-            .map_err(|err| ApplicationError::from(err).chain("Failed to read SF01 entity type ID."))?;
+        reader.read_exact(&mut type_id).map_err(|err| {
+            ApplicationError::from(err).chain("Failed to read SF01 entity type ID.")
+        })?;
 
         reader
             .read_exact(&mut buffer_32)
@@ -213,7 +216,6 @@ impl EsEntityIO for Sf01GenericEntity {
         serialised_entity
     }
 }
-
 
 pub mod sf01headerrecords;
 
