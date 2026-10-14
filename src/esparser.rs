@@ -1,9 +1,14 @@
 //! This module parses es data.
 
-use std::{fs::File, io::{BufReader, Read}, path::Path};
+use std::{
+    fs::File,
+    io::{BufReader, Read},
+    path::Path,
+};
 
 use crate::{
-    error::ApplicationError, esdata::{EsContainer, EsEntityIO, sf01group::{Sf01GenericGroup, Sf01Groups}, sf01header::Sf01Header},
+    error::ApplicationError,
+    esdata::{EsContainer, EsEntityIO, sf01group::Sf01Groups, sf01header::Sf01Header},
 };
 
 pub enum EsParser {
@@ -24,8 +29,10 @@ pub fn parse_sf01<T: AsRef<Path>>(path: T) -> Result<EsContainer, ApplicationErr
         && path.as_ref().is_file()
     {
         let mut file = BufReader::new(File::open(&path).map_err(|err| {
-            ApplicationError::from(err)
-                .chain(format!("The input file \"{}\" could not be opened.", path.as_ref().display()))
+            ApplicationError::from(err).chain(format!(
+                "The input file \"{}\" could not be opened.",
+                path.as_ref().display()
+            ))
         })?);
         // Reading the whole file into memory makes the parsing 10x faster.
         // File sizes should be less than 2 GB, so the increase in speed
@@ -41,7 +48,11 @@ pub fn parse_sf01<T: AsRef<Path>>(path: T) -> Result<EsContainer, ApplicationErr
         start_time = std::time::Instant::now();
         let groups = Sf01Groups::read(&mut file)?;
         log::info!("Parsed groups in {} ms.", (std::time::Instant::now() - start_time).as_millis());
-        Ok(EsContainer::Sf01Container { id: file_name.to_string_lossy().to_string(), header })
+        Ok(EsContainer::Sf01Container {
+            id: file_name.to_string_lossy().to_string(),
+            header,
+            groups,
+        })
     } else {
         return Err(ApplicationError::new(
             crate::error::ApplicationErrorType::InputDataError,
