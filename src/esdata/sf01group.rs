@@ -79,12 +79,16 @@ impl EsEntityIO for Sf01Groups {
     }
 }
 
-#[derive(Debug, CopyGetters)]
+#[derive(Debug, CopyGetters, Getters)]
 pub struct Sf01GenericGroup {
     #[getset(get_copy = "pub")]
     label: [u8; 4],
     #[getset(get_copy = "pub")]
     label_type: GroupLabelType,
+    #[getset(get_copy = "pub")]
+    /// 2 bytes timestamp and 6 unknwon bytes.
+    unknown: u64,
+    #[getset(get = "pub")]
     children: Vec<Sf01GroupChild>,
 }
 
@@ -128,9 +132,10 @@ impl EsEntityIO for Sf01GenericGroup {
             })
             .and_then(|()| GroupLabelType::try_from(buffer_32))?;
 
-        // Discard unnecessary information. 2 bytes timestamp and 6 unknwon bytes.
-        reader
+        // 2 bytes timestamp and 6 unknwon bytes.
+        let unknown = reader
             .read_exact(&mut buffer_64)
+            .and_then(|()| Ok(u64::from_le_bytes(buffer_64)))
             .map_err(|err| ApplicationError::from(err).chain("Failed to read SF01 group ."))?;
 
         let payload_size = size
@@ -160,12 +165,24 @@ impl EsEntityIO for Sf01GenericGroup {
         Ok(Self {
             label,
             label_type,
+            unknown,
             children,
         })
     }
 
     fn serialise(&self) -> Vec<u8> {
-        todo!()
+        let mut serialised_group = BINARY_GROUP_ID.to_vec();
+        // Inserts a dummy size for later swapping.
+        serialised_group.extend([0,0,0,0]);
+        serialised_group.extend(self.label());
+        serialised_group.extend(self.label_type().serialise());
+        serialised_group.extend(self.unknown().to_le_bytes());
+        for child in self.children() {
+            serialised_group.extend(child.serialise());
+        }
+        let mut size = (serialised_group.len() as u32).to_le_bytes();
+        size.swap_with_slice(&mut serialised_group[4..8]);
+        serialised_group
     }
 }
 
@@ -282,8 +299,20 @@ impl GroupLabelType {
     const NUMERICAL_PARENT_CELL_VISIBLE_DISTANT_ID: u32 = 10;
 }
 
+impl GroupLabelType {
+    pub fn serialise(&self) -> [u8; 4] {
+        u32::from(self).to_le_bytes()
+    }
+}
+
 impl From<GroupLabelType> for u32 {
     fn from(value: GroupLabelType) -> Self {
+        u32::from(&value)
+    }
+}
+
+impl From<&GroupLabelType> for u32 {
+    fn from(value: &GroupLabelType) -> Self {
         match value {
             GroupLabelType::RecordID => GroupLabelType::NUMERICAL_RECORD_ID,
             GroupLabelType::ParentWorldID => GroupLabelType::NUMERICAL_PARENT_WORLD_ID,
