@@ -4,7 +4,7 @@ use std::{
     io::{Read, Seek}, path::Path,
 };
 
-use crate::{error::ApplicationError, esdata::{sf01decomp::{sf01_compile, sf01_decompile}, sf01header::Sf01Header}};
+use crate::{error::ApplicationError, esdata::{sf01decomp::{sf01_compile, sf01_decompile}, sf01group::Sf01Groups, sf01header::Sf01Header}};
 
 /// An entity that can be serialised to deserialised from binary data.
 pub trait EsEntityIO {
@@ -23,7 +23,7 @@ pub trait EsEntityIO {
 
 /// A container for the underlying data structure.
 pub enum EsContainer {
-    Sf01Container { id: String, header: Sf01Header },
+    Sf01Container { id: String, header: Sf01Header, groups: Sf01Groups },
 }
 
 impl EsContainer {
@@ -34,7 +34,7 @@ impl EsContainer {
     /// * `artifact_directory` - the directory to compile the container to
     pub fn compile<P: AsRef<Path>>(&self, artifact_directory: P) -> Result<(), ApplicationError> {
         match self {
-            EsContainer::Sf01Container { id, header } => {
+            EsContainer::Sf01Container { id, header, groups } => {
                 todo!("Set record count, dependencies and interior cell count in header.");
                 sf01_compile(artifact_directory, id, header)
             },
@@ -48,7 +48,7 @@ impl EsContainer {
     /// * `source_directory` - the directory to decompile the container into
     pub fn decompile<P: AsRef<Path>>(&self, source_directory: P) -> Result<(), ApplicationError> {
         match self {
-            EsContainer::Sf01Container { id, header } => sf01_decompile(source_directory, id, header),
+            EsContainer::Sf01Container { id, header , groups} => sf01_decompile(source_directory, id, header, groups),
         }
     }
 }

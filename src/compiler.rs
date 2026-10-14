@@ -45,5 +45,6 @@ pub fn compile_sf01<T: AsRef<Path>>(path: T) -> Result<EsContainer, ApplicationE
     Ok(EsContainer::Sf01Container {
         id: header_source.id().to_string(),
         header: header_compiled,
+        groups: todo!(),
     })
 }

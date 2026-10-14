@@ -9,8 +9,8 @@ use std::{
 
 use crate::{
     error::ApplicationError,
-    esdata::{EsEntityIO, sf01header::Sf01Header},
-    essource::sf01headersource::Sf01HeaderSource,
+    esdata::{EsEntityIO, sf01group::Sf01Groups, sf01header::Sf01Header},
+    essource::{sf01groupsource::Sf01GroupSource, sf01headersource::Sf01HeaderSource},
 };
 
 /// Compiles the project.
@@ -53,10 +53,16 @@ pub fn sf01_compile<S: AsRef<str>, P: AsRef<Path>, H: Borrow<Sf01Header>>(
 /// * `source_directory` - the directory to decompile the container to
 /// * `id` - the ID of the container
 /// * `header` - the header information
-pub fn sf01_decompile<S: AsRef<str>, P: AsRef<Path>, H: Borrow<Sf01Header>>(
+pub fn sf01_decompile<
+    S: AsRef<str>,
+    P: AsRef<Path>,
+    H: Borrow<Sf01Header>,
+    G: Borrow<Sf01Groups>,
+>(
     source_directory: P,
     id: S,
     header: H,
+    groups: G,
 ) -> Result<(), ApplicationError> {
     std::fs::create_dir_all(&source_directory).map_err(|err| {
         ApplicationError::from(err).chain(format!(
@@ -64,6 +70,8 @@ pub fn sf01_decompile<S: AsRef<str>, P: AsRef<Path>, H: Borrow<Sf01Header>>(
             source_directory.as_ref().display()
         ))
     })?;
+    log::info!("Writing header source...");
+    let start_time = std::time::Instant::now();
     Sf01HeaderSource::from_compiled(id.as_ref(), header.borrow())
         .serialise(&source_directory)
         .map_err(|err| {
@@ -72,5 +80,31 @@ pub fn sf01_decompile<S: AsRef<str>, P: AsRef<Path>, H: Borrow<Sf01Header>>(
                 source_directory.as_ref().display()
             ))
         })?;
+    log::info!("Wrote header in {} ms.", (std::time::Instant::now() - start_time).as_millis());
+    log::info!("Writing groups...");
+    let start_time_groups = std::time::Instant::now();
+    for group in groups.borrow().groups() {
+        let file_name: String = format!("group_{}.yaml", String::from_utf8_lossy(&group.label()));
+        let file_path = source_directory.as_ref().join(file_name);
+        log::info!("Writing {}...", file_path.display());
+        let start_time_group = std::time::Instant::now();
+
+        Sf01GroupSource::from_compiled(group)
+            .serialise(&file_path)
+            .map_err(|err| {
+                ApplicationError::from(err).chain(format!(
+                    "Failed to create SF01 group source file at {}.",
+                    file_path.display()
+                ))
+            })?;
+        log::info!(
+            "Wrote group in {} ms.",
+            (std::time::Instant::now() - start_time_group).as_millis()
+        );
+    }
+    log::info!(
+        "Wrote groups in {} ms.",
+        (std::time::Instant::now() - start_time_groups).as_millis()
+    );
     Ok(())
 }
