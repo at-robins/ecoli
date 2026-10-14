@@ -1,6 +1,6 @@
 //! This module defines specific error types.
 
-use std::{string::FromUtf8Error};
+use std::{array::TryFromSliceError, string::FromUtf8Error};
 
 use getset::{CopyGetters, Getters};
 use log::error;
@@ -124,6 +124,13 @@ impl From<FromUtf8Error> for ApplicationError {
         Self::new(ApplicationErrorType::InputDataError, error)
     }
 }
+
+impl From<TryFromSliceError> for ApplicationError {
+    fn from(error: TryFromSliceError) -> Self {
+        Self::new(ApplicationErrorType::InputDataError, error)
+    }
+}
+
 
 /// A logger for a specific [`SeqError`].
 pub struct ApplicationErrorLogger {

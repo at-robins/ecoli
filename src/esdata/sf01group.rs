@@ -2,11 +2,17 @@
 
 use std::io::SeekFrom;
 
-use getset::Getters;
+use getset::{CopyGetters, Getters};
 
 use crate::{
     error::{ApplicationError, ApplicationErrorType},
-    esdata::{EsEntityIO, sf01record::Sf01GenericEntity},
+    esdata::{
+        EsEntityIO,
+        sf01record::{
+            Sf01GenericEntity,
+            sf01cell::{CELL_CONTAINING_GROUPS, Sf01CellRecord},
+        },
+    },
 };
 
 /// The binary identifier of a group in serialised data (GRUP).
@@ -21,10 +27,30 @@ pub struct Sf01Groups {
 }
 
 impl Sf01Groups {
-        pub fn record_count(&self) -> u32 {
-            self.groups().iter().map(Sf01GenericGroup::record_count).sum()
-        }
+    /// Returns the total entity count.
+    pub fn record_count(&self) -> u32 {
+        self.groups()
+            .iter()
+            .map(Sf01GenericGroup::record_count)
+            .sum()
+    }
 
+    /// Returns the total interior cell count.
+    pub fn interior_cell_count(&self) -> Result<u32, ApplicationError> {
+        let mut counter = 0;
+        let binary_cell_group_labels: Vec<[u8; 4]> = CELL_CONTAINING_GROUPS
+            .iter()
+            .map(|cell_group| cell_group.record_id_binary())
+            .collect();
+        for group in self
+            .groups()
+            .iter()
+            .filter(|group| binary_cell_group_labels.contains(&group.label()))
+        {
+            counter += group.interior_cell_count()?;
+        }
+        Ok(counter)
+    }
 }
 
 impl EsEntityIO for Sf01Groups {
@@ -53,9 +79,11 @@ impl EsEntityIO for Sf01Groups {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, CopyGetters)]
 pub struct Sf01GenericGroup {
+    #[getset(get_copy = "pub")]
     label: [u8; 4],
+    #[getset(get_copy = "pub")]
     label_type: GroupLabelType,
     children: Vec<Sf01GroupChild>,
 }
@@ -142,10 +170,19 @@ impl EsEntityIO for Sf01GenericGroup {
 }
 
 impl Sf01GenericGroup {
-        pub fn record_count(&self) -> u32 {
-            self.children.iter().map(Sf01GroupChild::record_count).sum()
-        }
+    /// Returns the total entity count.
+    pub fn record_count(&self) -> u32 {
+        self.children.iter().map(Sf01GroupChild::record_count).sum()
+    }
 
+    /// Returns the total interior cell count.
+    pub fn interior_cell_count(&self) -> Result<u32, ApplicationError> {
+        let mut counter = 0;
+        for child in &self.children {
+            counter += child.interior_cell_count()?;
+        }
+        Ok(counter)
+    }
 }
 
 #[derive(Debug)]
@@ -155,10 +192,22 @@ pub enum Sf01GroupChild {
 }
 
 impl Sf01GroupChild {
+    /// Returns the total entity count.
     pub fn record_count(&self) -> u32 {
         match self {
-            Sf01GroupChild::Entity(sf01_generic_entity) => 1,
+            Sf01GroupChild::Entity(_) => 1,
             Sf01GroupChild::Group(sf01_generic_group) => sf01_generic_group.record_count(),
+        }
+    }
+
+    /// Returns the total interior cell count.
+    pub fn interior_cell_count(&self) -> Result<u32, ApplicationError> {
+        match self {
+            Sf01GroupChild::Entity(sf01_generic_entity) => {
+                Sf01CellRecord::is_interior_cell(sf01_generic_entity)
+                    .map(|value| if value { 1 } else { 0 })
+            },
+            Sf01GroupChild::Group(sf01_generic_group) => sf01_generic_group.interior_cell_count(),
         }
     }
 }
@@ -193,7 +242,7 @@ impl EsEntityIO for Sf01GroupChild {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum GroupLabelType {
     // The type ID of contained records.
     RecordID,

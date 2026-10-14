@@ -1,7 +1,8 @@
 //! This module models sf01 records data.
 
 use std::{
-    borrow::Borrow, io::{Cursor, Read, Seek}, rc::Rc,
+    borrow::Borrow,
+    io::{Cursor, Read, Seek},
 };
 
 use getset::{CopyGetters, Getters};
@@ -13,8 +14,8 @@ use crate::{
     utils::{is_bit_set_u32, set_bit_u32},
 };
 
-/// The sf01 header ID.
-const SF01_RECORD_ID_EXTENDED_SIZE: [u8; 4] = [120, 120, 120, 120];
+/// The SF01 size extension ID.
+const SF01_RECORD_ID_EXTENDED_SIZE: [u8; 4] = [88, 88, 88, 88];
 
 #[derive(Debug, CopyGetters, Getters)]
 pub struct Sf01GenericRecord {
@@ -150,7 +151,9 @@ pub struct Sf01GenericEntity {
 }
 
 impl Sf01GenericEntity {
-    pub fn payload(&self) -> Result<EntityPayload, ApplicationError> {
+    /// Returns the entities payload.
+    /// Decompresses the payload if compressed.
+    pub fn payload(&self) -> Result<EntityPayload<'_>, ApplicationError> {
         if self.flags().compressed() {
             // The first 2 bytes are the size of the decompressed data.
             let uncompressed_payload_size = u32::from_le_bytes(
@@ -182,19 +185,27 @@ impl Sf01GenericEntity {
             Ok(EntityPayload::Uncompressed(self.payload_raw()))
         }
     }
-}
 
-pub enum EntityPayload<'a> {
-    Uncompressed(&'a Vec<u8>),
-    Decompressed(Vec<u8>),
-}
+    /// Returns all records contained within the entities payload.
+    pub fn records(&self) -> Result<Vec<Sf01GenericRecord>, ApplicationError> {
+        let payload = self
+            .payload()
+            .map_err(|err| err.chain("Failed to get entity payload for record parsing."))?;
+        let mut payload_reader = Cursor::new(match &payload {
+            super::sf01record::EntityPayload::Uncompressed(items) => items.as_slice(),
+            super::sf01record::EntityPayload::Decompressed(items) => items.as_slice(),
+        });
+        let payload_size = payload.size() as u64;
 
-impl<'a> EntityPayload<'a> {
-    pub fn size(&self) -> usize {
-        match self {
-            EntityPayload::Uncompressed(items) => items.len(),
-            EntityPayload::Decompressed(items) => items.len(),
+        let mut records = Vec::new();
+
+        while payload_reader.position() < payload_size {
+            records.push(
+                Sf01GenericRecord::read(&mut payload_reader)
+                    .map_err(|err| err.chain("Failed to parse record."))?,
+            );
         }
+        Ok(records)
     }
 }
 
@@ -268,6 +279,23 @@ impl EsEntityIO for Sf01GenericEntity {
     }
 }
 
+/// An entities payload either a reference to the
+/// uncompressed data or the decompressed data itself.
+pub enum EntityPayload<'a> {
+    Uncompressed(&'a Vec<u8>),
+    Decompressed(Vec<u8>),
+}
+
+impl<'a> EntityPayload<'a> {
+    /// The payloads uncompressed size.
+    pub fn size(&self) -> usize {
+        match self {
+            EntityPayload::Uncompressed(items) => items.len(),
+            EntityPayload::Decompressed(items) => items.len(),
+        }
+    }
+}
+
 #[derive(Debug, CopyGetters, Clone, Copy)]
 pub struct Sf01EntityFlags {
     #[getset(get_copy = "pub")]
@@ -298,6 +326,58 @@ impl From<u32> for Sf01EntityFlags {
     }
 }
 
+#[derive(Debug, CopyGetters, Clone, Copy)]
+/// A generic 32 bit flag collection.
+pub struct Sf01GenericFlags {
+    #[getset(get_copy = "pub")]
+    flags: u32,
+}
+
+impl Sf01GenericFlags {
+    /// Checks if the specified bit is set.
+    /// Returns [`None`] if the requested bit is out of range.
+    pub fn is_set(&self, bit_index: u32) -> Option<bool> {
+        if bit_index < u32::BITS {
+            Some(is_bit_set_u32(self.flags(), bit_index))
+        } else {
+            None
+        }
+    }
+}
+
+impl From<u32> for Sf01GenericFlags {
+    fn from(flags: u32) -> Self {
+        Self { flags }
+    }
+}
+
+/// An entity ID / group label type.
+pub enum Sf01EntityType {
+    /// A cell entity.
+    Cell,
+    /// A worldspace entity.
+    Worldspace,
+}
+
+impl Sf01EntityType {
+    const TYPE_ID_CELL: &str = "CELL";
+    const TYPE_ID_WORLDSPACE: &str = "WRLD";
+
+    /// Returns the human readable entity ID.
+    pub fn record_id(&self) -> &str {
+        match self {
+            Self::Cell => Self::TYPE_ID_CELL,
+            Self::Worldspace => Self::TYPE_ID_WORLDSPACE,
+        }
+    }
+
+    /// Returns the entity ID as fixed binary representation.
+    pub fn record_id_binary(&self) -> [u8; 4] {
+        self.record_id().as_bytes().try_into().unwrap()
+    }
+}
+
+pub mod sf01cell;
 pub mod sf01headerrecords;
 
 #[cfg(test)]

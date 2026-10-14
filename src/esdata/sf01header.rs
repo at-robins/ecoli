@@ -2,7 +2,7 @@
 
 use std::{
     borrow::Borrow,
-    io::{Cursor, Read, Seek},
+    io::{Read, Seek},
 };
 
 use getset::{CopyGetters, Getters};
@@ -73,12 +73,9 @@ impl EsEntityIO for Sf01Header {
             ));
         }
 
-        let payload = header_entity.payload()?;
-        let mut payload_reader = Cursor::new(match &payload {
-            super::sf01record::EntityPayload::Uncompressed(items) => items.as_slice(),
-            super::sf01record::EntityPayload::Decompressed(items) => items.as_slice(),
-        });
-        let payload_size = payload.size() as u64;
+        let records = header_entity
+            .records()
+            .map_err(|err| err.chain("Failed to parse header records."))?;
 
         let mut author = None;
         let mut description = None;
@@ -87,9 +84,7 @@ impl EsEntityIO for Sf01Header {
         let mut interior_cell_count = 0;
         let mut record_count = 1;
 
-        while payload_reader.position() < payload_size {
-            let record = Sf01GenericRecord::read(&mut payload_reader)
-                .map_err(|err| err.chain("Failed to parse header record."))?;
+        for record in records {
             if record.id() == Sf01HeaderRecord::Author.record_id_binary() {
                 author = Some(NullTerminatedString::from_binary(record.take_payload())?)
             } else if record.id() == Sf01HeaderRecord::Description.record_id_binary() {
@@ -394,7 +389,9 @@ impl From<u32> for Sf01HeaderFlags {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use std::io::Cursor;
+
+use super::*;
 
     #[test]
     fn test_sf01_headers_read_serialise() {
