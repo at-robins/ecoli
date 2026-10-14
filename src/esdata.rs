@@ -35,6 +35,7 @@ impl EsContainer {
     pub fn compile<P: AsRef<Path>>(&self, artifact_directory: P) -> Result<(), ApplicationError> {
         match self {
             EsContainer::Sf01Container { id, header } => {
+                todo!("Set record count, dependencies and interior cell count in header.");
                 sf01_compile(artifact_directory, id, header)
             },
         }

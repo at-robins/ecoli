@@ -72,6 +72,5 @@ pub fn sf01_decompile<S: AsRef<str>, P: AsRef<Path>, H: Borrow<Sf01Header>>(
                 source_directory.as_ref().display()
             ))
         })?;
-
     Ok(())
 }

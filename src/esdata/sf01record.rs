@@ -1,8 +1,7 @@
 //! This module models sf01 records data.
 
 use std::{
-    borrow::Borrow,
-    io::{Read, Seek},
+    borrow::Borrow, io::{Cursor, Read, Seek}, rc::Rc,
 };
 
 use getset::{CopyGetters, Getters};
@@ -11,6 +10,7 @@ use crate::{
     error::{ApplicationError, ApplicationErrorType},
     esdata::EsEntityIO,
     essource::sf01recordsource::Sf01GenericRecordSource,
+    utils::{is_bit_set_u32, set_bit_u32},
 };
 
 /// The sf01 header ID.
@@ -134,7 +134,7 @@ pub struct Sf01GenericEntity {
     #[getset(get_copy = "pub")]
     type_id: [u8; 4],
     #[getset(get_copy = "pub")]
-    flags: u32,
+    flags: Sf01EntityFlags,
     #[getset(get_copy = "pub")]
     form_id: u32,
     #[getset(get_copy = "pub")]
@@ -144,7 +144,58 @@ pub struct Sf01GenericEntity {
     #[getset(get_copy = "pub")]
     version_control_2: u16,
     #[getset(get = "pub")]
-    payload: Vec<u8>,
+    /// The raw binary payload. Might be compressed.
+    /// For accessing decompressed data use [`Self::payload`].
+    payload_raw: Vec<u8>,
+}
+
+impl Sf01GenericEntity {
+    pub fn payload(&self) -> Result<EntityPayload, ApplicationError> {
+        if self.flags().compressed() {
+            // The first 2 bytes are the size of the decompressed data.
+            let uncompressed_payload_size = u32::from_le_bytes(
+                self.payload_raw()
+                    .get(0..4)
+                    .ok_or(ApplicationError::new(
+                        ApplicationErrorType::InputDataError,
+                        format!("The payload of entity {:?} is to short for decompression.", self),
+                    ))?
+                    .try_into()
+                    .unwrap(),
+            );
+            let compressed_payload: &[u8] = self
+                .payload_raw()
+                .get(4..self.payload_raw().len())
+                .ok_or(ApplicationError::new(
+                    ApplicationErrorType::InputDataError,
+                    format!("The payload of entity {:?} is too short for decompression.", self),
+                ))?;
+            let mut uncompressed_payload = Vec::with_capacity(uncompressed_payload_size as usize);
+            libflate::zlib::Decoder::new(compressed_payload)
+                .map_err(|err| {
+                    ApplicationError::from(err)
+                        .chain(format!("The payload of entity {:?} cannot be decompressed.", self))
+                })?
+                .read_to_end(&mut uncompressed_payload)?;
+            Ok(EntityPayload::Decompressed(uncompressed_payload))
+        } else {
+            Ok(EntityPayload::Uncompressed(self.payload_raw()))
+        }
+    }
+}
+
+pub enum EntityPayload<'a> {
+    Uncompressed(&'a Vec<u8>),
+    Decompressed(Vec<u8>),
+}
+
+impl<'a> EntityPayload<'a> {
+    pub fn size(&self) -> usize {
+        match self {
+            EntityPayload::Uncompressed(items) => items.len(),
+            EntityPayload::Decompressed(items) => items.len(),
+        }
+    }
 }
 
 impl EsEntityIO for Sf01GenericEntity {
@@ -187,9 +238,9 @@ impl EsEntityIO for Sf01GenericEntity {
         })?;
         let version_control_2 = u16::from_le_bytes(buffer_16);
 
-        let mut payload: Vec<u8> = vec![0; size as usize];
-        reader.read_exact(&mut payload).map_err(|err| {
-            ApplicationError::from(err).chain("Failed to read SF01 entity vpayload.")
+        let mut payload_raw: Vec<u8> = vec![0; size as usize];
+        reader.read_exact(&mut payload_raw).map_err(|err| {
+            ApplicationError::from(err).chain("Failed to read SF01 entity raw payload.")
         })?;
 
         Ok(Self {
@@ -199,21 +250,51 @@ impl EsEntityIO for Sf01GenericEntity {
             version_control_1,
             form_version,
             version_control_2,
-            payload,
+            payload_raw,
         })
     }
 
     fn serialise(&self) -> Vec<u8> {
-        let mut serialised_entity = Vec::with_capacity(24 + self.payload().len());
+        let mut serialised_entity = Vec::with_capacity(24 + self.payload_raw().len());
         serialised_entity.extend(self.type_id());
-        serialised_entity.extend((self.payload().len() as u32).to_le_bytes());
-        serialised_entity.extend(self.flags.to_le_bytes());
+        serialised_entity.extend((self.payload_raw().len() as u32).to_le_bytes());
+        serialised_entity.extend(self.flags.flags().to_le_bytes());
         serialised_entity.extend(self.form_id.to_le_bytes());
         serialised_entity.extend(self.version_control_1.to_le_bytes());
         serialised_entity.extend(self.form_version.to_le_bytes());
         serialised_entity.extend(self.version_control_2.to_le_bytes());
-        serialised_entity.extend(self.payload());
+        serialised_entity.extend(self.payload_raw());
         serialised_entity
+    }
+}
+
+#[derive(Debug, CopyGetters, Clone, Copy)]
+pub struct Sf01EntityFlags {
+    #[getset(get_copy = "pub")]
+    flags: u32,
+}
+
+impl Sf01EntityFlags {
+    const INDEX_COMPRESSED: u32 = 18;
+
+    /// Returns true if the compressed flag is set.
+    pub fn compressed(&self) -> bool {
+        is_bit_set_u32(self.flags, Self::INDEX_COMPRESSED)
+    }
+
+    /// Returns the entity flags with the compressed flag set to the specified value.
+    ///
+    /// # Parameters
+    ///
+    /// * `value` - the bit value to set
+    pub fn set_compressed(&self, value: bool) -> Self {
+        set_bit_u32(self.flags, Self::INDEX_COMPRESSED, value).into()
+    }
+}
+
+impl From<u32> for Sf01EntityFlags {
+    fn from(flags: u32) -> Self {
+        Sf01EntityFlags { flags }
     }
 }
 

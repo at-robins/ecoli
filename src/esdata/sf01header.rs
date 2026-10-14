@@ -50,6 +50,10 @@ pub struct Sf01Header {
     description: Option<NullTerminatedString>,
     #[getset(get = "pub")]
     dependencies: Vec<Sf01MasterRecord>,
+    #[getset(get_copy = "pub")]
+    interior_cell_count: u32,
+    #[getset(get_copy = "pub")]
+    record_count: u32,
 }
 
 impl EsEntityIO for Sf01Header {
@@ -69,33 +73,64 @@ impl EsEntityIO for Sf01Header {
             ));
         }
 
-        let payload_buffer = header_entity.payload();
+        let payload = header_entity.payload()?;
+        let mut payload_reader = Cursor::new(match &payload {
+            super::sf01record::EntityPayload::Uncompressed(items) => items.as_slice(),
+            super::sf01record::EntityPayload::Decompressed(items) => items.as_slice(),
+        });
+        let payload_size = payload.size() as u64;
 
         let mut author = None;
         let mut description = None;
         let mut masters = Vec::new();
         let mut overrides = Vec::new();
-        if !payload_buffer.is_empty() {
-            let payload_size = payload_buffer.len();
+        let mut interior_cell_count = 0;
+        let mut record_count = 1;
 
-            let mut payload_reader = Cursor::new(payload_buffer);
-            while payload_reader.position() < payload_size as u64 {
-                let record = Sf01GenericRecord::read(&mut payload_reader)
-                    .map_err(|err| err.chain("Failed to parse header record."))?;
-                if record.id() == Sf01HeaderRecord::Author.record_id_binary() {
-                    author = Some(NullTerminatedString::from_binary(record.take_payload())?)
-                } else if record.id() == Sf01HeaderRecord::Description.record_id_binary() {
-                    description = Some(NullTerminatedString::from_binary(record.take_payload())?)
-                } else if record.id() == Sf01HeaderRecord::Master.record_id_binary() {
-                    masters.push(NullTerminatedString::from_binary(record.take_payload())?);
-                } else if record.id() == Sf01HeaderRecord::Overrides.record_id_binary() {
-                    overrides.extend(u32_vector_from_binary(&record.take_payload())?);
-                }
+        while payload_reader.position() < payload_size {
+            let record = Sf01GenericRecord::read(&mut payload_reader)
+                .map_err(|err| err.chain("Failed to parse header record."))?;
+            if record.id() == Sf01HeaderRecord::Author.record_id_binary() {
+                author = Some(NullTerminatedString::from_binary(record.take_payload())?)
+            } else if record.id() == Sf01HeaderRecord::Description.record_id_binary() {
+                description = Some(NullTerminatedString::from_binary(record.take_payload())?)
+            } else if record.id() == Sf01HeaderRecord::Master.record_id_binary() {
+                masters.push(NullTerminatedString::from_binary(record.take_payload())?);
+            } else if record.id() == Sf01HeaderRecord::Overrides.record_id_binary() {
+                overrides.extend(u32_vector_from_binary(&record.take_payload())?);
+            } else if record.id() == Sf01HeaderRecord::InteriorCellCount.record_id_binary() {
+                interior_cell_count =
+                    u32::from_le_bytes(record.take_payload().try_into().map_err(|err| {
+                        ApplicationError::new(
+                            ApplicationErrorType::InputDataError,
+                            format!(
+                                "Failed to parse interior cell count \
+                                    header record from record payload: {:?}",
+                                err
+                            ),
+                        )
+                    })?);
+            } else if record.id() == Sf01HeaderRecord::Header.record_id_binary() {
+                let payload = record.take_payload();
+                record_count = u32::from_le_bytes(
+                    payload
+                        .get(4..8)
+                        .ok_or(ApplicationError::new(
+                            ApplicationErrorType::InputDataError,
+                            format!(
+                                "Failed to parse header \
+                                    header record from record payload: {:?}",
+                                payload
+                            ),
+                        ))?
+                        .try_into()
+                        .unwrap(),
+                );
             }
         }
 
         Ok(Self {
-            flags: header_entity.flags().into(),
+            flags: header_entity.flags().flags().into(),
             form_id: header_entity.form_id(),
             version_control_1: header_entity.version_control_1(),
             form_version: header_entity.form_version(),
@@ -103,11 +138,13 @@ impl EsEntityIO for Sf01Header {
             author,
             description,
             dependencies: Sf01MasterRecord::from_raw(masters, overrides),
+            interior_cell_count,
+            record_count,
         })
     }
 
     fn serialise(&self) -> Vec<u8> {
-        let records = self.serialse_records(todo!());
+        let records = self.serialse_records();
         let mut serialised_record = Vec::with_capacity(24 + records.len());
         serialised_record.extend_from_slice(&SF01_HEADER_ID);
         serialised_record.extend((records.len() as u32).to_le_bytes());
@@ -122,12 +159,11 @@ impl EsEntityIO for Sf01Header {
 }
 
 impl Sf01Header {
-    fn serialse_records(&self, group_entity_count: u32) -> Vec<u8> {
+    fn serialse_records(&self) -> Vec<u8> {
         let mut records = Vec::new();
 
         let mut header_payload = Sf01HeaderRecord::RECORD_FIELD_HEADER_VERSION.to_vec();
-        // The header entity also counts.
-        header_payload.extend((group_entity_count + 1).to_le_bytes());
+        header_payload.extend((self.record_count()).to_le_bytes());
         header_payload.extend(16779264u32.to_le_bytes());
 
         records.push(Sf01GenericRecord::new(
@@ -153,6 +189,11 @@ impl Sf01Header {
             ));
         }
         records.extend(Sf01MasterRecord::to_generic_records(self.dependencies()));
+
+        records.push(Sf01GenericRecord::new(
+            Sf01HeaderRecord::InteriorCellCount.record_id_binary(),
+            self.interior_cell_count().to_le_bytes().to_vec(),
+        ));
 
         let mut serialised_records = Vec::new();
         for record in records {
@@ -182,7 +223,10 @@ impl Sf01Header {
                 .unwrap_or(HEADER_FIELD_DEFAULT_VERSION_CONTROL_2),
             author: source.author().clone(),
             description: source.description().clone(),
+            // These values are derived from other group data and must be set separately.
             dependencies: Vec::new(),
+            interior_cell_count: 0,
+            record_count: 1,
         })
     }
 
@@ -195,12 +239,16 @@ impl Sf01Header {
         }
     }
 
-    pub fn calculate_number_of_records() {
-        // number_of_groups + number_of_group_records
-    }
-
     pub fn set_dependencies(&mut self, dependencies: Vec<Sf01MasterRecord>) {
         self.dependencies = dependencies;
+    }
+
+    pub fn set_interior_cell_count(&mut self, interior_cell_count: u32) {
+        self.interior_cell_count = interior_cell_count;
+    }
+
+    pub fn set_record_count(&mut self, record_count: u32) {
+        self.record_count = record_count;
     }
 }
 
