@@ -84,8 +84,8 @@ pub fn sf01_decompile<
     log::info!("Writing groups...");
     let start_time_groups = std::time::Instant::now();
     for group in groups.borrow().groups() {
-        let file_name: String = format!("group_{}.yaml", String::from_utf8_lossy(&group.label()));
-        let file_path = source_directory.as_ref().join(file_name);
+        let mut file_path = source_directory.as_ref().join(String::from_utf8_lossy(&group.label()).as_ref());
+        file_path.set_extension(Sf01GroupSource::GROUP_SOURCE_FILE_EXTENSION);
         log::info!("Writing {}...", file_path.display());
         let start_time_group = std::time::Instant::now();
 

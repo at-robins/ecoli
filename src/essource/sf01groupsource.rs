@@ -19,6 +19,9 @@ pub struct Sf01GroupSource {
 }
 
 impl Sf01GroupSource {
+    /// The file extension for group source files.
+    pub const GROUP_SOURCE_FILE_EXTENSION: &str = "group"; 
+
     pub fn from_compiled<G: Borrow<Sf01GenericGroup>>(group: G) -> Self {
         let group = group.borrow();
         Self {
