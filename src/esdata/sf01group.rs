@@ -8,15 +8,11 @@ use std::{
 use getset::{CopyGetters, Getters};
 
 use crate::{
-    error::{ApplicationError, ApplicationErrorType},
-    esdata::{
-        EsEntityIO,
-        sf01record::{
-            Sf01GenericEntity,
-            sf01cell::{CELL_CONTAINING_GROUPS, Sf01CellRecord},
+    error::{ApplicationError, ApplicationErrorType}, esdata::{
+        EsEntityIO, sf01record::{
+            Sf01EntityType, Sf01GenericEntity, sf01cell::{CELL_CONTAINING_GROUPS, Sf01CellRecord},
         },
-    },
-    essource::sf01groupsource::Sf01GroupSource,
+    }, essource::sf01groupsource::Sf01GroupSource,
 };
 
 /// The binary identifier of a group in serialised data (GRUP).
@@ -32,7 +28,8 @@ pub struct Sf01Groups {
 
 impl Sf01Groups {
     /// Creates a new group container.
-    pub fn new(groups: Vec<Sf01GenericGroup>) -> Self {
+    pub fn new(mut groups: Vec<Sf01GenericGroup>) -> Self {
+        groups.sort();
         Self { groups }
     }
 
@@ -76,7 +73,7 @@ impl EsEntityIO for Sf01Groups {
             reader.seek(SeekFrom::Current(-(eof_test_buffer.len() as i64)))?;
             groups.push(Sf01GenericGroup::read(reader)?);
         }
-        Ok(Self { groups })
+        Ok(Sf01Groups::new(groups))
     }
 
     fn serialise(&self) -> Vec<u8> {
@@ -88,7 +85,7 @@ impl EsEntityIO for Sf01Groups {
     }
 }
 
-#[derive(Debug, CopyGetters, Getters)]
+#[derive(Debug, CopyGetters, Getters, PartialEq, Eq)]
 pub struct Sf01GenericGroup {
     #[getset(get_copy = "pub")]
     label: [u8; 4],
@@ -222,7 +219,31 @@ impl Sf01GenericGroup {
     }
 }
 
-#[derive(Debug)]
+impl PartialOrd for Sf01GenericGroup {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        let label_self = Sf01EntityType::from_binary( &self.label());
+        let label_other = Sf01EntityType::from_binary( &other.label());
+        Some(if let Some(label_self) = label_self {
+            if let Some(label_other) = label_other {
+                label_self.cmp(&label_other)
+            } else {
+                core::cmp::Ordering::Greater
+            }
+        } else if label_other.is_some() {
+            core::cmp::Ordering::Less
+        } else {
+            core::cmp::Ordering::Equal
+        })
+    }
+}
+
+impl Ord for Sf01GenericGroup {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.partial_cmp(other).unwrap()
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum Sf01GroupChild {
     Entity(Sf01GenericEntity),
     Group(Sf01GenericGroup),
@@ -279,7 +300,7 @@ impl EsEntityIO for Sf01GroupChild {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GroupLabelType {
     // The type ID of contained records.
     RecordID,

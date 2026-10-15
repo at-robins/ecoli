@@ -130,7 +130,7 @@ impl Default for Sf01GenericRecord {
 }
 
 /// A generic top level record that might contain nested structures.
-#[derive(Debug, CopyGetters, Getters)]
+#[derive(Debug, CopyGetters, Getters, PartialEq, Eq)]
 pub struct Sf01GenericEntity {
     #[getset(get_copy = "pub")]
     type_id: [u8; 4],
@@ -296,7 +296,7 @@ impl<'a> EntityPayload<'a> {
     }
 }
 
-#[derive(Debug, CopyGetters, Clone, Copy)]
+#[derive(Debug, CopyGetters, Clone, Copy, PartialEq, Eq)]
 pub struct Sf01EntityFlags {
     #[getset(get_copy = "pub")]
     flags: u32,
@@ -351,6 +351,7 @@ impl From<u32> for Sf01GenericFlags {
     }
 }
 
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
 /// An entity ID / group label type.
 pub enum Sf01EntityType {
     /// A cell entity.
@@ -374,6 +375,16 @@ impl Sf01EntityType {
     /// Returns the entity ID as fixed binary representation.
     pub fn record_id_binary(&self) -> [u8; 4] {
         self.record_id().as_bytes().try_into().unwrap()
+    }
+
+    pub fn from_binary(binary_data: &[u8]) -> Option<Self> {
+        Some(if binary_data == Self::Cell.record_id_binary() {
+            Self::Cell
+        } else if binary_data == Self::Worldspace.record_id_binary() {
+            Self::Worldspace
+        } else {
+            return None;
+        })
     }
 }
 
