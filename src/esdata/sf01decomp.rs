@@ -20,10 +20,11 @@ use crate::{
 /// * `artifact_directory` - the directory to compile the project to
 /// * `id` - the ID to use as artifact name
 /// * `header` - the header information
-pub fn sf01_compile<S: AsRef<str>, P: AsRef<Path>, H: Borrow<Sf01Header>>(
+pub fn sf01_compile<S: AsRef<str>, P: AsRef<Path>, H: Borrow<Sf01Header>, G: Borrow<Sf01Groups>>(
     artifact_directory: P,
     id: S,
     header: H,
+    groups: G,
 ) -> Result<(), ApplicationError> {
     std::fs::create_dir_all(&artifact_directory).map_err(|err| {
         ApplicationError::from(err).chain(format!(
@@ -42,6 +43,12 @@ pub fn sf01_compile<S: AsRef<str>, P: AsRef<Path>, H: Borrow<Sf01Header>>(
         .map_err(|err| {
             ApplicationError::from(err)
                 .chain(format!("Failed to write SF01 header to {}.", artifact_path.display()))
+        })?;
+    artifact
+        .write_all(&groups.borrow().serialise())
+        .map_err(|err| {
+            ApplicationError::from(err)
+                .chain(format!("Failed to write SF01 groups to {}.", artifact_path.display()))
         })?;
     Ok(())
 }
@@ -84,7 +91,9 @@ pub fn sf01_decompile<
     log::info!("Writing groups...");
     let start_time_groups = std::time::Instant::now();
     for group in groups.borrow().groups() {
-        let mut file_path = source_directory.as_ref().join(String::from_utf8_lossy(&group.label()).as_ref());
+        let mut file_path = source_directory
+            .as_ref()
+            .join(String::from_utf8_lossy(&group.label()).as_ref());
         file_path.set_extension(Sf01GroupSource::GROUP_SOURCE_FILE_EXTENSION);
         log::info!("Writing {}...", file_path.display());
         let start_time_group = std::time::Instant::now();

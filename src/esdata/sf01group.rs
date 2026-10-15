@@ -1,6 +1,9 @@
 //! This module models sf01 groups data.
 
-use std::io::SeekFrom;
+use std::{
+    borrow::Borrow,
+    io::{Cursor, SeekFrom},
+};
 
 use getset::{CopyGetters, Getters};
 
@@ -13,6 +16,7 @@ use crate::{
             sf01cell::{CELL_CONTAINING_GROUPS, Sf01CellRecord},
         },
     },
+    essource::sf01groupsource::Sf01GroupSource,
 };
 
 /// The binary identifier of a group in serialised data (GRUP).
@@ -27,6 +31,11 @@ pub struct Sf01Groups {
 }
 
 impl Sf01Groups {
+    /// Creates a new group container.
+    pub fn new(groups: Vec<Sf01GenericGroup>) -> Self {
+        Self { groups }
+    }
+
     /// Returns the total entity count.
     pub fn record_count(&self) -> u32 {
         self.groups()
@@ -173,7 +182,7 @@ impl EsEntityIO for Sf01GenericGroup {
     fn serialise(&self) -> Vec<u8> {
         let mut serialised_group = BINARY_GROUP_ID.to_vec();
         // Inserts a dummy size for later swapping.
-        serialised_group.extend([0,0,0,0]);
+        serialised_group.extend([0, 0, 0, 0]);
         serialised_group.extend(self.label());
         serialised_group.extend(self.label_type().serialise());
         serialised_group.extend(self.unknown().to_le_bytes());
@@ -199,6 +208,17 @@ impl Sf01GenericGroup {
             counter += child.interior_cell_count()?;
         }
         Ok(counter)
+    }
+
+    pub fn from_source<T: Borrow<Sf01GroupSource>>(source: T) -> Result<Self, ApplicationError> {
+        let source = source.borrow();
+        let payload = base122_rs::decode(source.content()).map_err(|err| {
+            ApplicationError::new(ApplicationErrorType::IOError, err)
+                .chain(format!("Failed to decode binary source data: {:?}", source))
+        })?;
+        Self::read(&mut Cursor::new(payload.as_slice())).map_err(|err| {
+            err.chain(format!("Failed to parse binary source data as SF01 group: {:?}", payload))
+        })
     }
 }
 

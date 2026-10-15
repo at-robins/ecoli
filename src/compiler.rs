@@ -3,9 +3,7 @@
 use std::{fs::File, io::BufReader, path::Path};
 
 use crate::{
-    error::ApplicationError,
-    esdata::{EsContainer, sf01header::Sf01Header},
-    essource::sf01headersource::Sf01HeaderSource,
+    error::ApplicationError, esdata::{EsContainer, sf01group::{Sf01GenericGroup, Sf01Groups}, sf01header::Sf01Header}, essource::{sf01groupsource::Sf01GroupSource, sf01headersource::Sf01HeaderSource},
 };
 
 pub enum EsCompiler {
@@ -21,30 +19,57 @@ impl EsCompiler {
 }
 
 pub fn compile_sf01<T: AsRef<Path>>(path: T) -> Result<EsContainer, ApplicationError> {
-    log::info!("Compiling {} with SF01 flavour.", path.as_ref().display());
-    let header_path = path.as_ref().join(Sf01HeaderSource::SOURCE_FILE_NAME);
+    let path = path.as_ref();
+    log::info!("Compiling {} with SF01 flavour.", path.display());
+    log::info!("Compiling header...");
+    let header_path = path.join(Sf01HeaderSource::SOURCE_FILE_NAME);
     let header_file = BufReader::new(File::open(&header_path).map_err(|err| {
-        ApplicationError::from(err).chain(format!(
-            "The SF01 header file \"{}\" could not be opened.",
-            path.as_ref().display()
-        ))
+        ApplicationError::from(err)
+            .chain(format!("The SF01 header file \"{}\" could not be opened.", path.display()))
     })?);
     let header_source: Sf01HeaderSource = yaml_serde::from_reader(header_file).map_err(|err| {
-        ApplicationError::from(err).chain(format!(
-            "The SF01 header file \"{}\" could not be parsed.",
-            path.as_ref().display()
-        ))
+        ApplicationError::from(err)
+            .chain(format!("The SF01 header file \"{}\" could not be parsed.", path.display()))
     })?;
 
     let header_compiled: Sf01Header = Sf01Header::from_source(&header_source).map_err(|err| {
         ApplicationError::from(err).chain(format!(
             "The SF01 header file \"{}\" could not be converted from source representation.",
-            path.as_ref().display()
+            path.display()
         ))
     })?;
+    log::info!("Compiling groups...");
+    let mut groups: Vec<Sf01GenericGroup> = Vec::new(); 
+    for entry in walkdir::WalkDir::new(path) {
+        let entry = entry.map_err(|err| {
+            ApplicationError::from(err).chain(format!(
+                "Failed to read entry while inspecting the source directory {}.",
+                path.display()
+            ))
+        })?;
+        if let Some(file_extionsion) = entry.path().extension()
+            && file_extionsion == Sf01GroupSource::GROUP_SOURCE_FILE_EXTENSION
+        {
+            let group_file = BufReader::new(File::open(entry.path()).map_err(|err| {
+                ApplicationError::from(err).chain(format!(
+                    "The SF01 group file \"{}\" could not be opened.",
+                    entry.path().display()
+                ))
+            })?);
+            log::info!("Compiling group {}...", entry.path().display());
+            let group_source: Sf01GroupSource =
+                yaml_serde::from_reader(group_file).map_err(|err| {
+                    ApplicationError::from(err).chain(format!(
+                        "The SF01 group file \"{}\" could not be parsed.",
+                        entry.path().display()
+                    ))
+                })?;
+                groups.push(Sf01GenericGroup::from_source(group_source)?);
+        }
+    }
     Ok(EsContainer::Sf01Container {
         id: header_source.id().to_string(),
         header: header_compiled,
-        groups: todo!(),
+        groups: Sf01Groups::new(groups),
     })
 }

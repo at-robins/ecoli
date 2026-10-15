@@ -131,6 +131,12 @@ impl From<TryFromSliceError> for ApplicationError {
     }
 }
 
+impl From<walkdir::Error> for ApplicationError {
+    fn from(error: walkdir::Error) -> Self {
+        Self::new(ApplicationErrorType::IOError, error)
+    }
+}
+
 
 /// A logger for a specific [`SeqError`].
 pub struct ApplicationErrorLogger {

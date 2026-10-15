@@ -57,8 +57,8 @@ impl Command {
                 output_path,
                 flavour,
             } => {
-                let container = flavour
-                    .es_conpiler()
+                let mut container = flavour
+                    .es_compiler()
                     .compile_es(input_path)
                     .map_err(|err| {
                         ApplicationError::from(err)

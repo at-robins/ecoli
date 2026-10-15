@@ -16,7 +16,7 @@ impl EsFlavour {
     }
 
     /// Returns the respective compiler.
-    pub fn es_conpiler(&self) -> EsCompiler {
+    pub fn es_compiler(&self) -> EsCompiler {
         match self {
             EsFlavour::SF01 => EsCompiler::SF01Compiler,
         }
