@@ -3,7 +3,13 @@
 use std::{fs::File, io::BufReader, path::Path};
 
 use crate::{
-    error::ApplicationError, esdata::{EsContainer, sf01group::{Sf01GenericGroup, Sf01Groups}, sf01header::Sf01Header}, essource::{sf01groupsource::Sf01GroupSource, sf01headersource::Sf01HeaderSource},
+    error::ApplicationError,
+    esdata::{
+        EsContainer,
+        sf01group::{Sf01GenericGroup, Sf01Groups},
+        sf01header::Sf01Header,
+    },
+    essource::{sf01groupsource::Sf01GroupSource, sf01headersource::Sf01HeaderSource},
 };
 
 pub enum EsCompiler {
@@ -22,6 +28,7 @@ pub fn compile_sf01<T: AsRef<Path>>(path: T) -> Result<EsContainer, ApplicationE
     let path = path.as_ref();
     log::info!("Compiling {} with SF01 flavour.", path.display());
     log::info!("Compiling header...");
+    let start_time_header = std::time::Instant::now();
     let header_path = path.join(Sf01HeaderSource::SOURCE_FILE_NAME);
     let header_file = BufReader::new(File::open(&header_path).map_err(|err| {
         ApplicationError::from(err)
@@ -38,8 +45,13 @@ pub fn compile_sf01<T: AsRef<Path>>(path: T) -> Result<EsContainer, ApplicationE
             path.display()
         ))
     })?;
+    log::info!(
+        "Compiled header in {} ms.",
+        (std::time::Instant::now() - start_time_header).as_millis()
+    );
     log::info!("Compiling groups...");
-    let mut groups: Vec<Sf01GenericGroup> = Vec::new(); 
+    let start_time_groups = std::time::Instant::now();
+    let mut groups: Vec<Sf01GenericGroup> = Vec::new();
     for entry in walkdir::WalkDir::new(path) {
         let entry = entry.map_err(|err| {
             ApplicationError::from(err).chain(format!(
@@ -57,6 +69,7 @@ pub fn compile_sf01<T: AsRef<Path>>(path: T) -> Result<EsContainer, ApplicationE
                 ))
             })?);
             log::info!("Compiling group {}...", entry.path().display());
+            let start_time_group = std::time::Instant::now();
             let group_source: Sf01GroupSource =
                 yaml_serde::from_reader(group_file).map_err(|err| {
                     ApplicationError::from(err).chain(format!(
@@ -64,9 +77,17 @@ pub fn compile_sf01<T: AsRef<Path>>(path: T) -> Result<EsContainer, ApplicationE
                         entry.path().display()
                     ))
                 })?;
-                groups.push(Sf01GenericGroup::from_source(group_source)?);
+            groups.push(Sf01GenericGroup::from_source(group_source)?);
+            log::info!(
+                "Compiled group in {} ms.",
+                (std::time::Instant::now() - start_time_group).as_millis()
+            );
         }
     }
+    log::info!(
+        "Compiled groups in {} ms.",
+        (std::time::Instant::now() - start_time_groups).as_millis()
+    );
     Ok(EsContainer::Sf01Container {
         id: header_source.id().to_string(),
         header: header_compiled,

@@ -227,10 +227,10 @@ impl PartialOrd for Sf01GenericGroup {
             if let Some(label_other) = label_other {
                 label_self.cmp(&label_other)
             } else {
-                core::cmp::Ordering::Greater
+                core::cmp::Ordering::Less
             }
         } else if label_other.is_some() {
-            core::cmp::Ordering::Less
+            core::cmp::Ordering::Greater
         } else {
             core::cmp::Ordering::Equal
         })

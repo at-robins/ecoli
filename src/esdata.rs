@@ -50,13 +50,37 @@ impl EsContainer {
     ) -> Result<(), ApplicationError> {
         match self {
             EsContainer::Sf01Container { id, header, groups } => {
-                header.set_record_count(groups.record_count());
-                header.set_interior_cell_count(groups.interior_cell_count().map_err(|err| {
+                log::info!("Calculating total record count...");
+                let start_time_record_count = std::time::Instant::now();
+                // The header entity needs to be counted separately.
+                let record_count = groups.record_count() + 1;
+                header.set_record_count(record_count);
+                log::info!(
+                    "Counted {} records in {} ms.",
+                    record_count,
+                    (std::time::Instant::now() - start_time_record_count).as_millis()
+                );
+                log::info!("Calculating interior cell count...");
+                let start_time_interior_cell_count = std::time::Instant::now();
+                let interior_cell_count = groups.interior_cell_count().map_err(|err| {
                     err.chain(format!(
                         "Failed to set interior cell count during compilation of {}.",
                         artifact_directory.as_ref().display()
                     ))
-                })?);
+                })?;
+                header.set_interior_cell_count(interior_cell_count);
+                log::info!(
+                    "Counted {} interior cells in {} ms.",
+                    interior_cell_count,
+                    (std::time::Instant::now() - start_time_interior_cell_count).as_millis()
+                );
+                log::info!("Calculating dependency tree...");
+                let start_time_dependencies = std::time::Instant::now();
+
+                log::info!(
+                    "Calculated dependency tree in {} ms.",
+                    (std::time::Instant::now() - start_time_dependencies).as_millis()
+                );
                 header.set_dependencies(todo!());
                 sf01_compile(artifact_directory, id, header, groups)
             },
