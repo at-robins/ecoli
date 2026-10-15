@@ -6,6 +6,7 @@ use std::{
 };
 
 use getset::{CopyGetters, Getters};
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 
 use crate::{
     error::{ApplicationError, ApplicationErrorType}, esdata::{
@@ -201,8 +202,9 @@ impl Sf01GenericGroup {
     /// Returns the total interior cell count.
     pub fn interior_cell_count(&self) -> Result<u32, ApplicationError> {
         let mut counter = 0;
-        for child in &self.children {
-            counter += child.interior_cell_count()?;
+        let results: Vec<Result<u32, ApplicationError>> = self.children.par_iter().map(Sf01GroupChild::interior_cell_count).collect();
+        for result in results {
+            counter += result?;
         }
         Ok(counter)
     }

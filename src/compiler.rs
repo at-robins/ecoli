@@ -2,6 +2,8 @@
 
 use std::{fs::File, io::BufReader, path::Path};
 
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+
 use crate::{
     error::ApplicationError,
     esdata::{
@@ -52,36 +54,14 @@ pub fn compile_sf01<T: AsRef<Path>>(path: T) -> Result<EsContainer, ApplicationE
     log::info!("Compiling groups...");
     let start_time_groups = std::time::Instant::now();
     let mut groups: Vec<Sf01GenericGroup> = Vec::new();
-    for entry in walkdir::WalkDir::new(path) {
-        let entry = entry.map_err(|err| {
-            ApplicationError::from(err).chain(format!(
-                "Failed to read entry while inspecting the source directory {}.",
-                path.display()
-            ))
-        })?;
-        if let Some(file_extionsion) = entry.path().extension()
-            && file_extionsion == Sf01GroupSource::GROUP_SOURCE_FILE_EXTENSION
-        {
-            let group_file = BufReader::new(File::open(entry.path()).map_err(|err| {
-                ApplicationError::from(err).chain(format!(
-                    "The SF01 group file \"{}\" could not be opened.",
-                    entry.path().display()
-                ))
-            })?);
-            log::info!("Compiling group {}...", entry.path().display());
-            let start_time_group = std::time::Instant::now();
-            let group_source: Sf01GroupSource =
-                yaml_serde::from_reader(group_file).map_err(|err| {
-                    ApplicationError::from(err).chain(format!(
-                        "The SF01 group file \"{}\" could not be parsed.",
-                        entry.path().display()
-                    ))
-                })?;
-            groups.push(Sf01GenericGroup::from_source(group_source)?);
-            log::info!(
-                "Compiled group in {} ms.",
-                (std::time::Instant::now() - start_time_group).as_millis()
-            );
+    let entries: Vec<Result<walkdir::DirEntry, walkdir::Error>> =
+        walkdir::WalkDir::new(path).into_iter().collect();
+    let group_results: Vec<Result<Option<Sf01GenericGroup>, ApplicationError>> =
+        entries.into_par_iter().map(entry_to_group).collect();
+
+    for group_result in group_results {
+        if let Some(group) = group_result? {
+            groups.push(group);
         }
     }
     log::info!(
@@ -93,4 +73,40 @@ pub fn compile_sf01<T: AsRef<Path>>(path: T) -> Result<EsContainer, ApplicationE
         header: header_compiled,
         groups: Sf01Groups::new(groups),
     })
+}
+
+/// Helper function to allow parallelisation.
+fn entry_to_group(
+    entry: Result<walkdir::DirEntry, walkdir::Error>,
+) -> Result<Option<Sf01GenericGroup>, ApplicationError> {
+    let entry = entry.map_err(|err| {
+        ApplicationError::from(err)
+            .chain(format!("Failed to read entry while inspecting the source directory."))
+    })?;
+    if let Some(file_extionsion) = entry.path().extension()
+        && file_extionsion == Sf01GroupSource::GROUP_SOURCE_FILE_EXTENSION
+    {
+        let group_file = BufReader::new(File::open(entry.path()).map_err(|err| {
+            ApplicationError::from(err).chain(format!(
+                "The SF01 group file \"{}\" could not be opened.",
+                entry.path().display()
+            ))
+        })?);
+        log::info!("Compiling group {}...", entry.path().display());
+        let start_time_group = std::time::Instant::now();
+        let group_source: Sf01GroupSource = yaml_serde::from_reader(group_file).map_err(|err| {
+            ApplicationError::from(err).chain(format!(
+                "The SF01 group file \"{}\" could not be parsed.",
+                entry.path().display()
+            ))
+        })?;
+        log::info!(
+            "Compiled group {} in {} ms.",
+            entry.path().display(),
+            (std::time::Instant::now() - start_time_group).as_millis()
+        );
+        Ok(Some(Sf01GenericGroup::from_source(group_source)?))
+    } else {
+        Ok(None)
+    }
 }
