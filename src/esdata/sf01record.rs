@@ -3,9 +3,11 @@
 use std::{
     borrow::Borrow,
     io::{Cursor, Read, Seek},
+    str::FromStr,
 };
 
 use getset::{CopyGetters, Getters};
+use strum::{EnumString, IntoStaticStr};
 
 use crate::{
     error::{ApplicationError, ApplicationErrorType},
@@ -351,25 +353,211 @@ impl From<u32> for Sf01GenericFlags {
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, EnumString, IntoStaticStr)]
 /// An entity ID / group label type.
 pub enum Sf01EntityType {
+    GMST,
+    KYWD,
+    FFKW,
+    LCRT,
+    AACT,
+    TRNS,
+    TXST,
+    GLOB,
+    DMGT,
+    CLAS,
+    FACT,
+    AFFE,
+    HDPT,
+    EYES,
+    RACE,
+    SOUN,
+    SECH,
+    ASPC,
+    AOPF,
+    MGEF,
+    LTEX,
+    PDCL,
+    ENCH,
+    SPEL,
+    SCRL,
+    ACTI,
+    TACT,
+    CURV,
+    CUR3,
+    ARMO,
+    BOOK,
+    CONT,
+    DOOR,
+    INGR,
+    LIGH,
+    MISC,
+    STAT,
+    SCOL,
+    PKIN,
+    MSTT,
+    GRAS,
+    FLOR,
+    FURN,
+    WEAP,
+    AMMO,
+    NPC_,
+    PLYR,
+    LVLN,
+    LVLP,
+    KEYM,
+    ALCH,
+    IDLM,
+    BMMO,
+    NOTE,
+    PROJ,
+    HAZD,
+    BNDS,
+    TERM,
+    LVLI,
+    GBFT,
+    GBFM,
+    LVLB,
+    WTHR,
+    WTHS,
+    CLMT,
+    SPGD,
+    REGN,
+    NAVI,
     /// A cell entity.
+    #[strum(serialize = "CELL")]
     Cell,
     /// A worldspace entity.
+    #[strum(serialize = "WRLD")]
     Worldspace,
+    NAVM,
+    DIAL,
+    INFO,
+    QUST,
+    IDLE,
+    PACK,
+    CSTY,
+    LSCR,
+    LVSP,
+    ANIO,
+    WATR,
+    EFSH,
+    EXPL,
+    DEBR,
+    IMGS,
+    IMAD,
+    FLST,
+    PERK,
+    BPTD,
+    ADDN,
+    AVIF,
+    CAMS,
+    CPTH,
+    VTYP,
+    MATT,
+    IPCT,
+    IPDS,
+    ARMA,
+    LCTN,
+    MESG,
+    DOBJ,
+    DFOB,
+    LGTM,
+    MUSC,
+    FSTP,
+    FSTS,
+    SMBN,
+    SMQN,
+    SMEN,
+    DLBR,
+    MUST,
+    EQUP,
+    RELA,
+    SCEN,
+    ASTP,
+    OTFT,
+    ARTO,
+    MOVT,
+    DUAL,
+    COLL,
+    CLFM,
+    REVB,
+    RFGP,
+    AMDL,
+    AAMD,
+    MAAM,
+    LAYR,
+    COBJ,
+    OMOD,
+    ZOOM,
+    INNR,
+    KSSM,
+    SCCO,
+    AORU,
+    STAG,
+    IRES,
+    BIOM,
+    NOCM,
+    LENS,
+    OVIS,
+    STND,
+    STMP,
+    GCVR,
+    MRPH,
+    TRAV,
+    RSGD,
+    OSWP,
+    ATMO,
+    LVSC,
+    SPCH,
+    AAPD,
+    VOLI,
+    SFBK,
+    SFPC,
+    SFPT,
+    SFTR,
+    PCMT,
+    BMOD,
+    STBH,
+    PNDT,
+    CNDF,
+    PCBN,
+    PCCN,
+    STDT,
+    WWED,
+    RSPJ,
+    AOPS,
+    AMBS,
+    WBAR,
+    PTST,
+    LMSW,
+    FORC,
+    TMLM,
+    EFSQ,
+    SDLT,
+    MTPT,
+    CLDF,
+    FOGV,
+    WKMF,
+    LGDI,
+    PSDC,
+    SUNP,
+    PMFT,
+    TODD,
+    AVMD,
+    PERS,
+    CHAL,
+    FXPD,
+    GPOF,
+    GPOG,
+    GWED,
+    TDED,
 }
 
 impl Sf01EntityType {
-    const TYPE_ID_CELL: &str = "CELL";
-    const TYPE_ID_WORLDSPACE: &str = "WRLD";
-
     /// Returns the human readable entity ID.
     pub fn record_id(&self) -> &str {
-        match self {
-            Self::Cell => Self::TYPE_ID_CELL,
-            Self::Worldspace => Self::TYPE_ID_WORLDSPACE,
-        }
+        self.into()
     }
 
     /// Returns the entity ID as fixed binary representation.
@@ -378,13 +566,11 @@ impl Sf01EntityType {
     }
 
     pub fn from_binary(binary_data: &[u8]) -> Option<Self> {
-        Some(if binary_data == Self::Cell.record_id_binary() {
-            Self::Cell
-        } else if binary_data == Self::Worldspace.record_id_binary() {
-            Self::Worldspace
+        if let Ok(parsed_id) = str::from_utf8(binary_data) {
+            Self::from_str(parsed_id).ok()
         } else {
-            return None;
-        })
+            None
+        }
     }
 }
 
