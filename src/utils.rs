@@ -1,5 +1,6 @@
 //! This module contains utility functions.
 
+use getset::CopyGetters;
 use serde::{Deserialize, Serialize};
 
 use crate::error::{ApplicationError, ApplicationErrorType};
@@ -138,6 +139,54 @@ impl Default for NullTerminatedString {
     fn default() -> Self {
         Self {
             value: Default::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, CopyGetters)]
+/// A RGBA colour.
+pub struct RGBAColour {
+    #[getset(get_copy = "pub")]
+    red: u8,
+    #[getset(get_copy = "pub")]
+    green: u8,
+    #[getset(get_copy = "pub")]
+    blue: u8,
+    #[getset(get_copy = "pub")]
+    alpha: u8,
+}
+
+impl RGBAColour {
+    /// Creates a new RGBA colour.
+    pub fn new(red: u8, green: u8, blue: u8, alpha: u8) -> Self {
+        Self {
+            red,
+            green,
+            blue,
+            alpha,
+        }
+    }
+}
+
+impl From<RGBAColour> for [u8; 4] {
+    fn from(value: RGBAColour) -> Self {
+        [value.red(), value.green(), value.blue(), value.alpha()]
+    }
+}
+
+impl From<RGBAColour> for u32 {
+    fn from(value: RGBAColour) -> Self {
+        u32::from_le_bytes(value.into())
+    }
+}
+
+impl Default for RGBAColour {
+    fn default() -> Self {
+        Self {
+            red: 255,
+            green: 255,
+            blue: 255,
+            alpha: 255,
         }
     }
 }
