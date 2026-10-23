@@ -104,4 +104,5 @@ impl EsContainer {
 pub mod sf01decomp;
 pub mod sf01group;
 pub mod sf01header;
+pub mod sf01identity;
 pub mod sf01record;
