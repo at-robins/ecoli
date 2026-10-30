@@ -1,5 +1,7 @@
 //! This module provides identity and dependency data structures.
 
+use crate::error::{ApplicationError, ApplicationErrorType};
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 /// The type of dependency. Defines the number of possible dependencies of the specified type
 /// and the maximum number of owned entities based on the ID scheme.
@@ -81,7 +83,7 @@ impl Sf01DependencyType {
         0b11111111_11111111_11111111_11111111 ^ self.dependency_mask()
     }
 
-    /// The load position within the respective group.
+    /// The load position index within the respective group.
     ///
     /// # Parameters
     ///
@@ -94,7 +96,7 @@ impl Sf01DependencyType {
         }
     }
 
-    /// The load position within the respective group by inferring the ID type.
+    /// The load position index within the respective group by inferring the ID type.
     ///
     /// # Parameters
     ///
@@ -106,6 +108,47 @@ impl Sf01DependencyType {
             Sf01DependencyType::Small => (id << 8) >> 20,
         }
     }
+
+    /// Returns the maximum position value / index possible
+    /// for the given dependency type.
+    pub fn maximum_position(&self) -> u32 {
+        match self {
+            Sf01DependencyType::Full => 252,
+            Sf01DependencyType::Medium => 255,
+            Sf01DependencyType::Small => 4095,
+        }
+    }
+
+    /// Constructs the full dependency part from the load position index.
+    ///
+    /// # Parameters
+    ///
+    /// * `position` - the position index to construct the dependency part from
+    pub fn position_to_dependency_part(&self, position: u32) -> Result<u32, ApplicationError> {
+        if position > self.maximum_position() {
+            Err(ApplicationError::new(
+                ApplicationErrorType::InternalError,
+                format!(
+                    "Position {} is larger than the maximum position value for  {:?}.",
+                    position, self
+                ),
+            ))
+        } else {
+            Ok(match self {
+                Sf01DependencyType::Full => position << 24,
+                Sf01DependencyType::Medium => {
+                    ((position << 16) & 0b00000000_11111111_00000000_00000000)
+                        | 0b11111101_00000000_00000000_00000000
+                },
+                Sf01DependencyType::Small => {
+                    ((position << 12) & 0b00000000_11111111_11110000_00000000)
+                        | 0b11111110_00000000_00000000_00000000
+                },
+            })
+        }
+    }
+}
+
 }
 
 #[cfg(test)]
@@ -206,6 +249,168 @@ mod tests {
         assert_eq!(
             Sf01DependencyType::positon_from_id(0b11111110_01001011_11101000_00000010),
             0b01001011_1110
+        );
+    }
+
+    #[test]
+    fn test_dependency_type_max_position_index() {
+        assert_eq!(Sf01DependencyType::Full.maximum_position(), 2u32.pow(8) - 4);
+        assert_eq!(Sf01DependencyType::Medium.maximum_position(), 2u32.pow(8) - 1);
+        assert_eq!(Sf01DependencyType::Small.maximum_position(), 2u32.pow(12) - 1);
+    }
+
+    #[test]
+    fn test_dependency_type_position_to_dependency_part() {
+        assert_eq!(
+            Sf01DependencyType::Full
+                .position_to_dependency_part(0x00)
+                .unwrap(),
+            0x00000000
+        );
+        assert_eq!(
+            Sf01DependencyType::Full
+                .position_to_dependency_part(0x42)
+                .unwrap(),
+            0x42000000
+        );
+        assert_eq!(
+            Sf01DependencyType::Medium
+                .position_to_dependency_part(0xAB)
+                .unwrap(),
+            0xFDAB0000
+        );
+        assert_eq!(
+            Sf01DependencyType::Small
+                .position_to_dependency_part(0b01001011_1110)
+                .unwrap(),
+            0b11111110_01001011_11100000_00000000
+        );
+    }
+
+    #[test]
+    fn test_dependency_type_position_to_dependency_part_position_to_large() {
+        // Full
+        assert!(
+            Sf01DependencyType::Full
+                .position_to_dependency_part(0x00)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Full
+                .position_to_dependency_part(0x42)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Full
+                .position_to_dependency_part(0xFC)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Full
+                .position_to_dependency_part(0xFD)
+                .is_err(),
+        );
+        assert!(
+            Sf01DependencyType::Full
+                .position_to_dependency_part(0xFE)
+                .is_err(),
+        );
+        assert!(
+            Sf01DependencyType::Full
+                .position_to_dependency_part(0xFF)
+                .is_err(),
+        );
+        assert!(
+            Sf01DependencyType::Full
+                .position_to_dependency_part(0xABC)
+                .is_err(),
+        );
+        // Medium
+        assert!(
+            Sf01DependencyType::Medium
+                .position_to_dependency_part(0x00)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Medium
+                .position_to_dependency_part(0x42)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Medium
+                .position_to_dependency_part(0xFC)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Medium
+                .position_to_dependency_part(0xFD)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Medium
+                .position_to_dependency_part(0xFE)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Medium
+                .position_to_dependency_part(0xFF)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Medium
+                .position_to_dependency_part(0x100)
+                .is_err(),
+        );
+        assert!(
+            Sf01DependencyType::Medium
+                .position_to_dependency_part(0xABC)
+                .is_err(),
+        );
+        // Small
+        assert!(
+            Sf01DependencyType::Small
+                .position_to_dependency_part(0x00)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Small
+                .position_to_dependency_part(0x42)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Small
+                .position_to_dependency_part(0xFC)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Small
+                .position_to_dependency_part(0xFD)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Small
+                .position_to_dependency_part(0xFE)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Small
+                .position_to_dependency_part(0xFF)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Small
+                .position_to_dependency_part(0xABC)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Small
+                .position_to_dependency_part(0b11111111_1111)
+                .is_ok(),
+        );
+        assert!(
+            Sf01DependencyType::Small
+                .position_to_dependency_part(0b1_00000000_0000)
+                .is_err(),
         );
     }
 }
