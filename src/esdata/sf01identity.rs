@@ -1,5 +1,7 @@
 //! This module provides identity and dependency data structures.
 
+use getset::CopyGetters;
+
 use crate::error::{ApplicationError, ApplicationErrorType};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -118,33 +120,51 @@ impl Sf01DependencyType {
             Sf01DependencyType::Small => 4095,
         }
     }
+}
 
-    /// Constructs the full dependency part from the load position index.
-    ///
-    /// # Parameters
-    ///
-    /// * `position` - the position index to construct the dependency part from
-    pub fn position_to_dependency_part(&self, position: u32) -> Result<u32, ApplicationError> {
-        if position > self.maximum_position() {
+#[derive(Clone, Copy, PartialEq, Eq, Debug, CopyGetters)]
+/// The type of dependency. Defines the number of possible dependencies of the specified type
+/// and the maximum number of owned entities based on the ID scheme.
+pub struct Sf01DependencyPositionIndex {
+    #[getset(get_copy = "pub")]
+    dependency_type: Sf01DependencyType,
+    #[getset(get_copy = "pub")]
+    position_index: u32,
+}
+
+impl Sf01DependencyPositionIndex {
+    pub fn new(
+        dependency_type: Sf01DependencyType,
+        position_index: u32,
+    ) -> Result<Self, ApplicationError> {
+        if position_index > dependency_type.maximum_position() {
             Err(ApplicationError::new(
                 ApplicationErrorType::InternalError,
                 format!(
                     "Position {} is larger than the maximum position value for  {:?}.",
-                    position, self
+                    position_index, dependency_type
                 ),
             ))
         } else {
-            Ok(match self {
-                Sf01DependencyType::Full => position << 24,
-                Sf01DependencyType::Medium => {
-                    ((position << 16) & 0b00000000_11111111_00000000_00000000)
-                        | 0b11111101_00000000_00000000_00000000
-                },
-                Sf01DependencyType::Small => {
-                    ((position << 12) & 0b00000000_11111111_11110000_00000000)
-                        | 0b11111110_00000000_00000000_00000000
-                },
+            Ok(Self {
+                dependency_type,
+                position_index,
             })
+        }
+    }
+
+    /// Constructs the full dependency part from the load position index.
+    pub fn dependency_part(&self) -> u32 {
+        match self.dependency_type() {
+            Sf01DependencyType::Full => self.position_index() << 24,
+            Sf01DependencyType::Medium => {
+                ((self.position_index() << 16) & 0b00000000_11111111_00000000_00000000)
+                    | 0b11111101_00000000_00000000_00000000
+            },
+            Sf01DependencyType::Small => {
+                ((self.position_index() << 12) & 0b00000000_11111111_11110000_00000000)
+                    | 0b11111110_00000000_00000000_00000000
+            },
         }
     }
 }
@@ -260,157 +280,63 @@ mod tests {
     }
 
     #[test]
-    fn test_dependency_type_position_to_dependency_part() {
+    fn test_dependency_position_index_dependency_part() {
         assert_eq!(
-            Sf01DependencyType::Full
-                .position_to_dependency_part(0x00)
-                .unwrap(),
+            Sf01DependencyPositionIndex::new(Sf01DependencyType::Full, 0x00)
+                .unwrap()
+                .dependency_part(),
             0x00000000
         );
         assert_eq!(
-            Sf01DependencyType::Full
-                .position_to_dependency_part(0x42)
-                .unwrap(),
+            Sf01DependencyPositionIndex::new(Sf01DependencyType::Full, 0x42)
+                .unwrap()
+                .dependency_part(),
             0x42000000
         );
         assert_eq!(
-            Sf01DependencyType::Medium
-                .position_to_dependency_part(0xAB)
-                .unwrap(),
+            Sf01DependencyPositionIndex::new(Sf01DependencyType::Medium, 0xAB)
+                .unwrap()
+                .dependency_part(),
             0xFDAB0000
         );
         assert_eq!(
-            Sf01DependencyType::Small
-                .position_to_dependency_part(0b01001011_1110)
-                .unwrap(),
+            Sf01DependencyPositionIndex::new(Sf01DependencyType::Small, 0b01001011_1110)
+                .unwrap()
+                .dependency_part(),
             0b11111110_01001011_11100000_00000000
         );
     }
 
     #[test]
-    fn test_dependency_type_position_to_dependency_part_position_to_large() {
+    fn test_dependency_position_index_new() {
         // Full
-        assert!(
-            Sf01DependencyType::Full
-                .position_to_dependency_part(0x00)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Full
-                .position_to_dependency_part(0x42)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Full
-                .position_to_dependency_part(0xFC)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Full
-                .position_to_dependency_part(0xFD)
-                .is_err(),
-        );
-        assert!(
-            Sf01DependencyType::Full
-                .position_to_dependency_part(0xFE)
-                .is_err(),
-        );
-        assert!(
-            Sf01DependencyType::Full
-                .position_to_dependency_part(0xFF)
-                .is_err(),
-        );
-        assert!(
-            Sf01DependencyType::Full
-                .position_to_dependency_part(0xABC)
-                .is_err(),
-        );
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Full, 0x00).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Full, 0x42).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Full, 0xFC).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Full, 0xFD).is_err());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Full, 0xFE).is_err());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Full, 0xFF).is_err());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Full, 0xABC).is_err());
+
         // Medium
-        assert!(
-            Sf01DependencyType::Medium
-                .position_to_dependency_part(0x00)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Medium
-                .position_to_dependency_part(0x42)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Medium
-                .position_to_dependency_part(0xFC)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Medium
-                .position_to_dependency_part(0xFD)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Medium
-                .position_to_dependency_part(0xFE)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Medium
-                .position_to_dependency_part(0xFF)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Medium
-                .position_to_dependency_part(0x100)
-                .is_err(),
-        );
-        assert!(
-            Sf01DependencyType::Medium
-                .position_to_dependency_part(0xABC)
-                .is_err(),
-        );
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Medium, 0x00).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Medium, 0x42).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Medium, 0xFC).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Medium, 0xFD).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Medium, 0xFE).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Medium, 0xFF).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Medium, 0x100).is_err());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Medium, 0xABC).is_err());
+
         // Small
-        assert!(
-            Sf01DependencyType::Small
-                .position_to_dependency_part(0x00)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Small
-                .position_to_dependency_part(0x42)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Small
-                .position_to_dependency_part(0xFC)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Small
-                .position_to_dependency_part(0xFD)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Small
-                .position_to_dependency_part(0xFE)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Small
-                .position_to_dependency_part(0xFF)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Small
-                .position_to_dependency_part(0xABC)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Small
-                .position_to_dependency_part(0b11111111_1111)
-                .is_ok(),
-        );
-        assert!(
-            Sf01DependencyType::Small
-                .position_to_dependency_part(0b1_00000000_0000)
-                .is_err(),
-        );
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Small, 0x00).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Small, 0x42).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Small, 0xFC).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Small, 0xFD).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Small, 0xFE).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Small, 0xFF).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Small, 0xABC).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Small, 0b11111111_1111).is_ok());
+        assert!(Sf01DependencyPositionIndex::new(Sf01DependencyType::Small, 0b1_00000000_0000).is_err());
     }
 }
