@@ -29,11 +29,16 @@ pub enum Command {
         #[arg(short = 'i', long, required = true)]
         input_path: PathBuf,
         /// The path to the build artifact directory.
+        /// Defaults to the current working directory.
         #[arg(short = 'o', long)]
         output_path: Option<PathBuf>,
-        /// The path to the project root directory.
+        /// The software execution flavour to use.
         #[arg(short = 'f', long, default_value_t=EsFlavour::SF01)]
         flavour: EsFlavour,
+        /// The path to the directory containing the compiled dependencies.
+        /// Defaults to the current working directory.
+        #[arg(short = 'd', long)]
+        dependency_path: Option<PathBuf>,
     },
     /// Decompiles an es file.
     Decompile {
@@ -41,11 +46,16 @@ pub enum Command {
         #[arg(short = 'i', long, required = true)]
         input_file: PathBuf,
         /// The path to the project root directory.
+        /// Defaults to the current working directory.
         #[arg(short = 'o', long)]
         output_path: Option<PathBuf>,
-        /// The path to the project root directory.
+        /// The software execution flavour to use.
         #[arg(short = 'f', long, default_value_t=EsFlavour::SF01)]
         flavour: EsFlavour,
+        /// The path to the directory containing the compiled dependencies.
+        /// Defaults to the current working directory.
+        #[arg(short = 'd', long)]
+        dependency_path: Option<PathBuf>,
     },
 }
 
@@ -56,14 +66,16 @@ impl Command {
                 input_path,
                 output_path,
                 flavour,
+                dependency_path,
             } => {
-                let mut container = flavour
-                    .es_compiler()
-                    .compile_es(input_path)
-                    .map_err(|err| {
-                        ApplicationError::from(err)
-                            .chain(format!("Failed to compile {}.", input_path.display()))
-                    })?;
+                let mut container =
+                    flavour
+                        .es_compiler()
+                        .compile_es(input_path)
+                        .map_err(|err| {
+                            ApplicationError::from(err)
+                                .chain(format!("Failed to compile {}.", input_path.display()))
+                        })?;
                 let default_path = PathBuf::from(".");
                 let artifact_directory = output_path.as_ref().unwrap_or(&default_path);
                 container.compile(artifact_directory).map_err(|err| {
@@ -79,6 +91,7 @@ impl Command {
                 input_file,
                 output_path,
                 flavour,
+                dependency_path,
             } => {
                 let container = flavour.es_parser().parse_es(input_file).map_err(|err| {
                     ApplicationError::from(err)
